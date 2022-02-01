@@ -79,6 +79,7 @@ rdrFS rdr = occNameFS (occName rdr)
 fsDot :: FastString
 fsDot = mkFastString "."
 
+-- AZ: moved to ghc-exactprint
 varRdrName :: HsExpr p -> Maybe (LIdP p)
 varRdrName (HsVar _ n) = Just n
 varRdrName _ = Nothing

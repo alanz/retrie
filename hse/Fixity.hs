@@ -25,6 +25,7 @@ import qualified Language.Haskell.Exts as HSE
 import Retrie.Fixity
 import Retrie.GHC
 
+-- Move to ghc-exactPrint
 defaultFixityEnv :: FixityEnv
 defaultFixityEnv = mkFixityEnv $ map hseToGHC HSE.baseFixities
 

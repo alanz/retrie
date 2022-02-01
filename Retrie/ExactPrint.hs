@@ -51,6 +51,7 @@ module Retrie.ExactPrint
 import Control.Exception
 import Control.Monad.State.Lazy hiding (fix)
 -- import Data.Function (on)
+import Data.Char (isSpace)
 import Data.List (transpose)
 -- import Data.Maybe
 -- import qualified Data.Map as M
@@ -113,9 +114,11 @@ fixOneExpr env (L l2 (OpApp x2 ap1@(L l1 (OpApp x1 x op1 y)) op2 z))
     ap1_1 <- transferAnnsT isComma ap2'_0 ap1_0
     -- lift $ liftIO $ debugPrint Loud "fixOneExpr:recursing"  []
     rhs <- fixOneExpr env ap2'_0
-    -- lift $ liftIO $ debugPrint Loud "fixOneExpr:returning"  [showAst (L l2 $ OpApp x1 x op1 rhs)]
-    -- return $ L l1 $ OpApp x1 x op1 rhs
-    return $ L l2 $ OpApp x1 x op1 rhs
+    let res = L l2 $ OpApp x1 x op1 rhs
+    -- lift $ liftIO $ debugPrint Loud "fixOneExpr:returning:str"  [printNoLeadingSpaces res]
+    -- lift $ liftIO $ debugPrint Loud "fixOneExpr:returning:ast\n"  [showAst res]
+    -- return $ L l2 $ OpApp x1 x op1 rhs
+    return res
 fixOneExpr _ e = return e
 
 fixOnePat :: Monad m => FixityEnv -> LPat GhcPs -> TransformT m (LPat GhcPs)
@@ -195,6 +198,7 @@ fixOneEntry e x = do
   --   setEntryDPT x $ DP (xr, 0)
   -- return e
 
+-- Move to ghc-exactPrint
 -- TODO: move this somewhere more appropriate
 entryDP :: LocatedA a -> DeltaPos
 entryDP (L (SrcSpanAnn EpAnnNotUsed _) _) = SameLine 1
@@ -204,12 +208,20 @@ entryDP (L (SrcSpanAnn (EpAnn anc _ _) _) _)
       MovedAnchor dp -> dp
 
 
+-- ++AZ++ temporary
+printNoLeadingSpaces :: (Data k, ExactPrint k) => k -> String
+printNoLeadingSpaces = dropWhile isSpace . exactPrint
+
 fixOneEntryExpr :: MonadIO m => LHsExpr GhcPs -> TransformT m (LHsExpr GhcPs)
 fixOneEntryExpr e@(L l (OpApp a x b c)) = do
+  lift $ liftIO $ debugPrint Loud "fixOneEntryExpr:orig="  [printNoLeadingSpaces e]
   -- lift $ liftIO $ debugPrint Loud "fixOneEntryExpr:(e,x)="  [showAst (e,x)]
+  lift $ liftIO $ debugPrint Loud "fixOneEntryExpr:e="  [showAst e]
   (e',x') <- fixOneEntry e x
+  let repl = (L (getLoc e') (OpApp a x' b c))
   -- lift $ liftIO $ debugPrint Loud "fixOneEntryExpr:(e',x')="  [showAst (e',x')]
-  -- lift $ liftIO $ debugPrint Loud "fixOneEntryExpr:returning="  [showAst (L (getLoc e') (OpApp a x' b c))]
+  lift $ liftIO $ debugPrint Loud "fixOneEntryExpr:returning="  [showAst repl]
+  lift $ liftIO $ debugPrint Loud "fixOneEntryExpr:returning:str="  [printNoLeadingSpaces repl]
   return (L (getLoc e') (OpApp a x' b c))
 fixOneEntryExpr e = return e
 
@@ -226,7 +238,7 @@ fixOneEntryPat pat
 
 -------------------------------------------------------------------------------
 
-
+-- Move to ghc-exactPrint
 -- Swap entryDP and prior comments between the two args
 swapEntryDPT
   :: (Data a, Data b, Monad m, Monoid a1, Monoid a2, Typeable a1, Typeable a2)
@@ -421,6 +433,7 @@ transferAnchor (L (SrcSpanAnn EpAnnNotUsed l)    _) lb = setAnchorAn lb (spanAsA
 transferAnchor (L (SrcSpanAnn (EpAnn anc _ _) _) _) lb = setAnchorAn lb anc              emptyComments
 
 
+-- Move to ghc-exactPrint
 isComma :: TrailingAnn -> Bool
 isComma (AddCommaAnn _) = True
 isComma _ = False
