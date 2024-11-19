@@ -57,10 +57,16 @@ updateContext c i =
 
     updExp :: HsExpr GhcPs -> Context
     updExp HsApp{} = withPrec c (SourceText "HsApp") 10 InfixL i
+#if __GLASGOW_HASKELL__ >= 912
+    updExp (OpApp _ _ op _)
+      | Fixity prec dir <- lookupOp op $ ctxtFixityEnv c =
+          withPrec c NoSourceText prec dir i
+#else
     updExp (OpApp _ _ op _)
       | Fixity source prec dir <- lookupOp op $ ctxtFixityEnv c =
           withPrec c source prec dir i
-#if __GLASGOW_HASKELL__ < 904
+#endif
+#if __GLASGOW_HASKELL__ < 904 || __GLASGOW_HASKELL__ >= 912
     updExp (HsLet _ lbs _) = addInScope neverParen $ collectLocalBinders CollNoDictBinders lbs
 #else
     updExp (HsLet _ _ lbs _ _) = addInScope neverParen $ collectLocalBinders CollNoDictBinders lbs
@@ -73,11 +79,19 @@ updateContext c i =
     updType _ = withPrec c (SourceText "HsType") (getPrec appPrec) InfixN i
 
     updMatch :: Match GhcPs (LHsExpr GhcPs) -> Context
+#if __GLASGOW_HASKELL__ >= 912
+    updMatch
+      | i == 2  -- m_pats field
+      = addInScope c{ctxtParentPrec = IsLhs} . collectPatsBinders CollNoDictBinders . unLoc . m_pats
+      | otherwise = addInScope neverParen . collectPatsBinders CollNoDictBinders . unLoc . m_pats
+      where
+#else
     updMatch
       | i == 2  -- m_pats field
       = addInScope c{ctxtParentPrec = IsLhs} . collectPatsBinders CollNoDictBinders . m_pats
       | otherwise = addInScope neverParen . collectPatsBinders CollNoDictBinders . m_pats
       where
+#endif
 
     updGRHSs :: GRHSs GhcPs (LHsExpr GhcPs) -> Context
     updGRHSs = addInScope neverParen . collectLocalBinders CollNoDictBinders . grhssLocalBinds
@@ -129,7 +143,11 @@ getPrec (PprPrec prec) = prec
 withPrec :: Context -> SourceText -> Int -> FixityDirection -> Int -> Context
 withPrec c source prec dir i = c{ ctxtParentPrec = HasPrec fixity }
   where
+#if __GLASGOW_HASKELL__ >= 912
+    fixity = Fixity prec d
+#else
     fixity = Fixity source prec d
+#endif
     d = case dir of
       InfixL
         | i == firstChild -> InfixL

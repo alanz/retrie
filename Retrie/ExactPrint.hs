@@ -4,6 +4,7 @@
 -- LICENSE file in the root directory of this source tree.
 --
 {-# LANGUAGE CPP #-}
+{-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -38,11 +39,12 @@ module Retrie.ExactPrint
   , debug
   , hasComments
   , isComma
+  , transferEntryDP
+  , AnnConstraint
     -- * Annotated AST
   , module Retrie.ExactPrint.Annotated
     -- * ghc-exactprint re-exports
   , module Language.Haskell.GHC.ExactPrint
-  -- , module Language.Haskell.GHC.ExactPrint.Annotate
   , module Language.Haskell.GHC.ExactPrint.Types
   , module Language.Haskell.GHC.ExactPrint.Utils
   , module Language.Haskell.GHC.ExactPrint.Transform
@@ -51,10 +53,7 @@ module Retrie.ExactPrint
 import Control.Exception
 import Control.Monad
 import Control.Monad.State.Lazy hiding (fix)
--- import Data.Function (on)
 import Data.List (transpose)
--- import Data.Maybe
--- import qualified Data.Map as M
 import Text.Printf
 
 import Language.Haskell.GHC.ExactPrint hiding
@@ -62,13 +61,16 @@ import Language.Haskell.GHC.ExactPrint hiding
    setEntryDP
   , transferEntryDP
   )
--- import Language.Haskell.GHC.ExactPrint.ExactPrint (ExactPrint)
+#if __GLASGOW_HASKELL__ >= 912
+import Language.Haskell.GHC.ExactPrint.ExactPrint (setAnchorAn)
+#endif
 import Language.Haskell.GHC.ExactPrint.Utils hiding (debug)
 import qualified Language.Haskell.GHC.ExactPrint.Parsers as Parsers
 import Language.Haskell.GHC.ExactPrint.Types
   ( showGhc
   )
-import Language.Haskell.GHC.ExactPrint.Transform
+import Language.Haskell.GHC.ExactPrint.Transform hiding (transferEntryDP)
+import qualified Language.Haskell.GHC.ExactPrint.Transform as Transform
 
 import Retrie.ExactPrint.Annotated
 import Retrie.Fixity
@@ -81,6 +83,17 @@ import Debug.Trace
 
 debug :: c -> String -> c
 debug c s = trace s c
+
+#if __GLASGOW_HASKELL__ >= 912
+type AnnConstraint an = (NoAnn an, Semigroup an)
+#else
+type AnnConstraint an = (Monoid an)
+#endif
+
+transferEntryDP :: (Monad m, Typeable t1, Typeable t2)
+  => LocatedAn t1 a -> LocatedAn t2 b -> TransformT m (LocatedAn t2 b)
+transferEntryDP a b = return $ Transform.transferEntryDP a b
+
 
 -- Fixity traversal -----------------------------------------------------------
 
@@ -95,8 +108,13 @@ fix env = fixAssociativity >=> fixEntryDP
 
 -- Should (x op1 y) op2 z be reassociated as x op1 (y op2 z)?
 associatesRight :: Fixity -> Fixity -> Bool
+#if __GLASGOW_HASKELL__ >= 912
+associatesRight (Fixity p1 a1) (Fixity p2 _a2) =
+  p2 > p1 || p1 == p2 && a1 == InfixR
+#else
 associatesRight (Fixity _ p1 a1) (Fixity _ p2 _a2) =
   p2 > p1 || p1 == p2 && a1 == InfixR
+#endif
 
 -- We know GHC produces left-associated chains, so 'z' is never an
 -- operator application. We also know that this will be applied bottom-up
@@ -130,9 +148,14 @@ fixOnePat env (dLPat -> Just (L l2 (ConPat ext2 op2 (InfixCon (dLPat -> Just ap1
 fixOnePat _ e = return e
 
 -- TODO: move to ghc-exactprint
+#if __GLASGOW_HASKELL__ >= 912
+stripComments :: EpAnn an -> EpAnn an
+stripComments (EpAnn anc an _) = EpAnn anc an emptyComments
+#else
 stripComments :: SrcAnn an -> SrcAnn an
 stripComments (SrcSpanAnn EpAnnNotUsed l) = SrcSpanAnn EpAnnNotUsed l
 stripComments (SrcSpanAnn (EpAnn anc an _) l) = SrcSpanAnn (EpAnn anc an emptyComments) l
+#endif
 
 -- Move leading whitespace from the left child of an operator application
 -- to the application itself. We need this so we have correct offsets when
@@ -198,11 +221,18 @@ fixOneEntry e x = do
 
 -- TODO: move this somewhere more appropriate
 entryDP :: LocatedA a -> DeltaPos
+#if __GLASGOW_HASKELL__ >= 912
+entryDP (L (EpAnn anc _ _) _)
+  = case anc of
+      EpaSpan _ -> SameLine 1
+      EpaDelta _ dp _ -> dp
+#else
 entryDP (L (SrcSpanAnn EpAnnNotUsed _) _) = SameLine 1
 entryDP (L (SrcSpanAnn (EpAnn anc _ _) _) _)
   = case anchor_op anc of
       UnchangedAnchor -> SameLine 1
       MovedAnchor dp -> dp
+#endif
 
 
 fixOneEntryExpr :: MonadIO m => LHsExpr GhcPs -> TransformT m (LHsExpr GhcPs)
@@ -230,28 +260,12 @@ fixOneEntryPat pat
 
 -- Swap entryDP and prior comments between the two args
 swapEntryDPT
-  :: (Data a, Data b, Monad m, Monoid a1, Monoid a2, Typeable a1, Typeable a2)
+  :: (Data a, Data b, Monad m, Typeable a1, Typeable a2)
   => LocatedAn a1 a -> LocatedAn a2 b -> TransformT m (LocatedAn a1 a, LocatedAn a2 b)
 swapEntryDPT a b = do
   b' <- transferEntryDP a b
   a' <- transferEntryDP b a
   return (a',b')
-
--- swapEntryDPT
---   :: (Data a, Data b, Monad m)
---   => LocatedAn a1 a -> LocatedAn a2 b -> TransformT m ()
--- swapEntryDPT a b =
---   modifyAnnsT $ \ anns ->
---   let akey = mkAnnKey a
---       bkey = mkAnnKey b
---       aann = fromMaybe annNone $ M.lookup akey anns
---       bann = fromMaybe annNone $ M.lookup bkey anns
---   in M.insert akey
---       aann { annEntryDelta = annEntryDelta bann
---            , annPriorComments = annPriorComments bann } $
---      M.insert bkey
---       bann { annEntryDelta = annEntryDelta aann
---            , annPriorComments = annPriorComments aann } anns
 
 -------------------------------------------------------------------------------
 
@@ -393,7 +407,7 @@ transferEntryDPT _a _b = error "transferEntryDPT"
 --                   maybeAnns
 
 addAllAnnsT
-  :: (HasCallStack, Monoid an, Data a, Data b, MonadIO m, Typeable an)
+  :: (HasCallStack, AnnConstraint an, Data a, Data b, MonadIO m, Typeable an)
   => LocatedAn an a -> LocatedAn an b -> TransformT m (LocatedAn an b)
 addAllAnnsT a b = do
   -- AZ: to start with, just transfer the entry DP from a to b
@@ -422,17 +436,23 @@ addAllAnnsT a b = do
 --           }
 
 transferAnchor :: LocatedA a -> LocatedA b -> LocatedA b
+#if __GLASGOW_HASKELL__ >= 912
+transferAnchor (L (EpAnn anc _ _) _) lb = setAnchorAn lb anc [] emptyComments
+#else
 transferAnchor (L (SrcSpanAnn EpAnnNotUsed l)    _) lb = setAnchorAn lb (spanAsAnchor l) emptyComments
 transferAnchor (L (SrcSpanAnn (EpAnn anc _ _) _) _) lb = setAnchorAn lb anc              emptyComments
+#endif
 
 
 isComma :: TrailingAnn -> Bool
 isComma (AddCommaAnn _) = True
 isComma _ = False
 
+#if __GLASGOW_HASKELL__ >= 912
+#else
 isCommentKeyword :: AnnKeywordId -> Bool
--- isCommentKeyword (AnnComment _) = True
 isCommentKeyword _ = False
+#endif
 
 -- isCommentAnnotation :: Annotation -> Bool
 -- isCommentAnnotation Ann{..} =
@@ -441,12 +461,20 @@ isCommentKeyword _ = False
 --   || any (isCommentKeyword . fst) annsDP
 
 hasComments :: LocatedAn an a -> Bool
+#if __GLASGOW_HASKELL__ >= 912
+hasComments (L (EpAnn anc _ cs) _)
+  = case cs of
+      EpaComments [] -> False
+      EpaCommentsBalanced [] [] -> False
+      _ -> True
+#else
 hasComments (L (SrcSpanAnn EpAnnNotUsed _) _) = False
 hasComments (L (SrcSpanAnn (EpAnn anc _ cs) _) _)
   = case cs of
       EpaComments [] -> False
       EpaCommentsBalanced [] [] -> False
       _ -> True
+#endif
 
 -- hasComments :: (Data a, Monad m) => Located a -> TransformT m Bool
 -- hasComments e = do
@@ -475,6 +503,13 @@ transferAnnsT
   -> LocatedA a                 -- from
   -> LocatedA b                 -- to
   -> TransformT m (LocatedA b)
+#if __GLASGOW_HASKELL__ >= 912
+transferAnnsT p (L (EpAnn anc (AnnListItem ts) cs) a) (L an b) = do
+  let ps = filter p ts
+  let an' = case an of
+        EpAnn ancb (AnnListItem tsb) csb -> EpAnn ancb (AnnListItem (tsb++ps)) csb
+  return (L an' b)
+#else
 transferAnnsT p (L (SrcSpanAnn EpAnnNotUsed _) _) b = return b
 transferAnnsT p (L (SrcSpanAnn (EpAnn anc (AnnListItem ts) cs) l) a) (L (SrcSpanAnn an lb) b) = do
   let ps = filter p ts
@@ -482,6 +517,7 @@ transferAnnsT p (L (SrcSpanAnn (EpAnn anc (AnnListItem ts) cs) l) a) (L (SrcSpan
         EpAnnNotUsed -> EpAnn (spanAsAnchor lb) (AnnListItem ps) emptyComments
         EpAnn ancb (AnnListItem tsb) csb -> EpAnn ancb (AnnListItem (tsb++ps)) csb
   return (L (SrcSpanAnn an' lb) b)
+#endif
 
 
 -- -- | 'Transform' monad version of 'setEntryDP',

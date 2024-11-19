@@ -65,7 +65,7 @@ matchToRewrites
 matchToRewrites e imps dir (L _ alt) = do
   -- lift $ debugPrint Loud "matchToRewrites:e="  [showAst e]
   let
-    pats = m_pats alt
+    pats = unLoc $ m_pats alt
     grhss = m_grhss alt
   qss <- for (zip (inits pats) (tails pats)) $
     makeFunctionQuery e imps dir grhss mkApps
@@ -81,12 +81,12 @@ irrefutablePat = go . unLoc
     go WildPat{} = True
     go VarPat{} = True
     go (LazyPat _ p) = irrefutablePat p
-#if __GLASGOW_HASKELL__ <= 904
+#if __GLASGOW_HASKELL__ <= 904 || __GLASGOW_HASKELL__ >= 912
     go (AsPat _ _ p) = irrefutablePat p
 #else
     go (AsPat _ _ _ p) = irrefutablePat p
 #endif
-#if __GLASGOW_HASKELL__ < 904
+#if __GLASGOW_HASKELL__ <= 904 || __GLASGOW_HASKELL__ >= 912
     go (ParPat _ p) = irrefutablePat p
 #else
     go (ParPat _ _ p _) = irrefutablePat p
@@ -134,6 +134,16 @@ backtickRules
 backtickRules e imps dir@LeftToRight grhss ps@[p1, p2] = do
   let
     both, left, right :: AppBuilder
+#if __GLASGOW_HASKELL__ >= 912
+    both op [l, r] = mkLocA (SameLine 1) (OpApp NoExtField l op r)
+    both _ _ = fail "backtickRules - both: impossible!"
+
+    left op [l] = mkLocA (SameLine 1) (SectionL NoExtField l op)
+    left _ _ = fail "backtickRules - left: impossible!"
+
+    right op [r] = mkLocA (SameLine 1) (SectionR NoExtField op r)
+    right _ _ = fail "backtickRules - right: impossible!"
+#else
     both op [l, r] = mkLocA (SameLine 1) (OpApp noAnn l op r)
     both _ _ = fail "backtickRules - both: impossible!"
 
@@ -142,6 +152,7 @@ backtickRules e imps dir@LeftToRight grhss ps@[p1, p2] = do
 
     right op [r] = mkLocA (SameLine 1) (SectionR noAnn op r)
     right _ _ = fail "backtickRules - right: impossible!"
+#endif
   qs <- makeFunctionQuery e imps dir grhss both (ps, [])
   qsl <- makeFunctionQuery e imps dir grhss left ([p1], [p2])
   qsr <- makeFunctionQuery e imps dir grhss right ([p2], [p1])

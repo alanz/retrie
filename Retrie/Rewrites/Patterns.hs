@@ -95,8 +95,13 @@ asPat patName params = do
 
     convertFields :: (Monad m) => [RecordPatSynField GhcPs]
                       -> TransformT m (HsRecFields GhcPs (LPat GhcPs))
+#if __GLASGOW_HASKELL__ >= 912
+    convertFields fields =
+      HsRecFields NoExtField <$> traverse convertField fields <*> pure Nothing
+#else
     convertFields fields =
       HsRecFields <$> traverse convertField fields <*> pure Nothing
+#endif
 
     convertField :: (Monad m) => RecordPatSynField GhcPs
                       -> TransformT m (LHsRecField GhcPs (LPat GhcPs))
@@ -108,6 +113,13 @@ asPat patName params = do
       let hsRecFieldAnn = noAnn
       mkLocA (SameLine 0) HsRecField{..}
 #else
+#if __GLASGOW_HASKELL__ >= 912
+      let hfbLHS = L noAnn recordPatSynField
+      hfbRHS <- mkVarPat recordPatSynPatVar
+      let hfbPun = False
+          hfbAnn = noAnn
+      mkLocA (SameLine 0) HsFieldBind{..}
+#else
       s <- uniqueSrcSpanT
       an <- mkEpAnn (SameLine 0) NoEpAnns
       let srcspan = SrcSpanAnn an s
@@ -116,6 +128,7 @@ asPat patName params = do
       let hfbPun = False
           hfbAnn = noAnn
       mkLocA (SameLine 0) HsFieldBind{..}
+#endif
 #endif
 
 mkExpRewrite
@@ -144,9 +157,18 @@ buildMatch
   => [LocatedN RdrName]
   -> LPat GhcPs
   -> TransformT m [LMatch GhcPs (LHsExpr GhcPs)]
+#if __GLASGOW_HASKELL__ >= 912
+buildMatch names rhs = do
+  pats <- traverse mkVarPat names
+  let bs = collectPatBinders CollNoDictBinders rhs
+  (rhsExpr,(_,_bs')) <- runStateT (patToExpr rhs) (wildSupply bs, bs)
+  let alt = mkMatch PatSyn (noLocA pats) rhsExpr emptyLocalBinds
+  return [alt]
+#else
 buildMatch names rhs = do
   pats <- traverse mkVarPat names
   let bs = collectPatBinders CollNoDictBinders rhs
   (rhsExpr,(_,_bs')) <- runStateT (patToExpr rhs) (wildSupply bs, bs)
   let alt = mkMatch PatSyn pats rhsExpr emptyLocalBinds
   return [alt]
+#endif

@@ -3,6 +3,7 @@
 -- This source code is licensed under the MIT license found in the
 -- LICENSE file in the root directory of this source tree.
 --
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE RankNTypes #-}
 module Retrie.Fixity
   ( FixityEnv
@@ -43,6 +44,18 @@ extendFixityEnv l (FixityEnv env) =
   FixityEnv $ extendFsEnvList env [ (fs, p) | p@(fs,_) <- l ]
 
 ppFixityEnv :: FixityEnv -> String
+#if __GLASGOW_HASKELL__ >= 912
+ppFixityEnv = unlines . map ppFixity . nonDetEltsUFM . unFixityEnv
+  where
+    ppFixity (fs, Fixity p d) = unwords
+      [ case d of
+          InfixN -> "infix"
+          InfixL -> "infixl"
+          InfixR -> "infixr"
+      , show p
+      , unpackFS fs
+      ]
+#else
 ppFixityEnv = unlines . map ppFixity . nonDetEltsUFM . unFixityEnv
   where
     ppFixity (fs, Fixity _ p d) = unwords
@@ -53,3 +66,4 @@ ppFixityEnv = unlines . map ppFixity . nonDetEltsUFM . unFixityEnv
       , show p
       , unpackFS fs
       ]
+#endif

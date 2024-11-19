@@ -48,7 +48,6 @@ import Language.Haskell.GHC.ExactPrint hiding
   -- , transferEntryDPT
     transferEntryDP
   )
--- import Language.Haskell.GHC.ExactPrint.ExactPrint (ExactPrint(..))
 import Language.Haskell.GHC.ExactPrint.Utils
 
 import Retrie.GHC
@@ -153,9 +152,15 @@ trimA = runIdentity . transformA nil . const . graftA
     nil :: Annotated ()
     nil = mempty
 
+#if __GLASGOW_HASKELL__ >= 912
+setEntryDPA :: (NoAnn an)
+            => Annotated (LocatedAn an ast) -> DeltaPos -> Annotated (LocatedAn an ast)
+setEntryDPA (Annotated ast s) dp = Annotated (setEntryDP ast dp) s
+#else
 setEntryDPA :: (Default an)
             => Annotated (LocatedAn an ast) -> DeltaPos -> Annotated (LocatedAn an ast)
 setEntryDPA (Annotated ast s) dp = Annotated (setEntryDP ast dp) s
+#endif
 
 -- | Exactprint an 'Annotated' thing.
 printA :: (Data ast, ExactPrint ast) => Annotated ast -> String

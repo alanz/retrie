@@ -118,12 +118,23 @@ substHsMatchContext
   -> HsMatchContext RdrName
   -> TransformT m (HsMatchContext RdrName)
 #else
+#if __GLASGOW_HASKELL__ >= 912
+  -> HsMatchContext (Located RdrName)
+  -> TransformT m (HsMatchContext (Located RdrName))
+#else
   -> HsMatchContext GhcPs
   -> TransformT m (HsMatchContext GhcPs)
 #endif
+#endif
+#if __GLASGOW_HASKELL__ >= 912
+substHsMatchContext ctxt (FunRhs (L l v) f s an)
+  | Just (HoleRdr rdr) <- lookupHoleVar v ctxt =
+    return $ FunRhs (L l rdr) f s an
+#else
 substHsMatchContext ctxt (FunRhs (L l v) f s)
   | Just (HoleRdr rdr) <- lookupHoleVar v ctxt =
     return $ FunRhs (L l rdr) f s
+#endif
 substHsMatchContext _ other = return other
 
 substBind

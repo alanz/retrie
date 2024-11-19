@@ -128,11 +128,17 @@ ruleBindersToQs bs = catMaybes
   ]
 
 tyBindersToLocatedRdrNames :: [LHsTyVarBndr s GhcPs] -> [LocatedN RdrName]
+#if __GLASGOW_HASKELL__ >= 912
+tyBindersToLocatedRdrNames vars =
+  [ var
+  | L _ (HsTvb { tvb_var = HsBndrVar _ var}) <- vars ]
+#else
 tyBindersToLocatedRdrNames vars = catMaybes
   [ case var of
       UserTyVar _ _ v -> Just v
       KindedTyVar _ _ v _ -> Just v
   | L _ var <- vars ]
+#endif
 
 data RuleInfo = RuleInfo
   { riName :: RuleName

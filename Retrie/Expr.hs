@@ -4,6 +4,7 @@
 -- LICENSE file in the root directory of this source tree.
 --
 {-# LANGUAGE CPP #-}
+{-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TupleSections #-}
@@ -65,6 +66,13 @@ mkLocatedHsVar ln@(L l n) = do
   mkLocA (SameLine 0)  (HsVar noExtField (L (setMoveAnchor (SameLine 0) l) n))
 
 -- TODO: move to ghc-exactprint
+#if __GLASGOW_HASKELL__ >= 912
+setMoveAnchor :: DeltaPos -> EpAnn an -> EpAnn an
+setMoveAnchor dp (EpAnn (EpaSpan s) an cs)
+  = EpAnn (EpaDelta s dp []) an cs
+setMoveAnchor dp (EpAnn _ an cs)
+  = EpAnn (EpaDelta noSrcSpan dp []) an cs
+#else
 setMoveAnchor :: (Monoid an) => DeltaPos -> SrcAnn an -> SrcAnn an
 setMoveAnchor dp (SrcSpanAnn EpAnnNotUsed l)
   = SrcSpanAnn (EpAnn (dpAnchor l dp) mempty emptyComments) l
@@ -74,6 +82,8 @@ setMoveAnchor dp (SrcSpanAnn (EpAnn (Anchor a _) an cs) l)
 -- TODO: move to ghc-exactprint
 dpAnchor :: SrcSpan -> DeltaPos -> Anchor
 dpAnchor l dp = Anchor (realSrcSpan l) (MovedAnchor dp)
+#endif
+
 
 -------------------------------------------------------------------------------
 
@@ -90,16 +100,27 @@ mkLoc e = do
   L <$> uniqueSrcSpanT <*> pure e
 
 -- ++AZ++:TODO: move to ghc-exactprint
+#if __GLASGOW_HASKELL__ >= 912
+mkLocA :: (Data e, Monad m, NoAnn an)
+  => DeltaPos -> e -> TransformT m (LocatedAn an e)
+mkLocA dp e = mkLocAA dp noAnn e
+#else
 mkLocA :: (Data e, Monad m, Monoid an)
   => DeltaPos -> e -> TransformT m (LocatedAn an e)
 mkLocA dp e = mkLocAA dp mempty e
+#endif
 
 -- ++AZ++:TODO: move to ghc-exactprint
+#if __GLASGOW_HASKELL__ >= 912
+mkLocAA :: (Data e, Monad m) => DeltaPos -> an -> e -> TransformT m (LocatedAn an e)
+mkLocAA dp an e = return (L (EpAnn (EpaDelta noSrcSpan dp []) an emptyComments) e)
+#else
 mkLocAA :: (Data e, Monad m) => DeltaPos -> an -> e -> TransformT m (LocatedAn an e)
 mkLocAA dp an e = do
   l <- uniqueSrcSpanT
   let anc = Anchor (realSrcSpan l) (MovedAnchor dp)
   return (L (SrcSpanAnn (EpAnn anc an emptyComments) l) e)
+#endif
 
 
 -- ++AZ++:TODO: move to ghc-exactprint
@@ -108,10 +129,15 @@ mkEpAnn dp an = do
   anc <- mkAnchor dp
   return $ EpAnn anc an emptyComments
 
+#if __GLASGOW_HASKELL__ >= 912
+mkAnchor :: Monad m => DeltaPos -> TransformT m EpaLocation
+mkAnchor dp = return (EpaDelta noSrcSpan dp [])
+#else
 mkAnchor :: Monad m => DeltaPos -> TransformT m (Anchor)
 mkAnchor dp = do
   l <- uniqueSrcSpanT
   return (Anchor (realSrcSpan l) (MovedAnchor dp))
+#endif
 
 -------------------------------------------------------------------------------
 
@@ -119,6 +145,24 @@ mkLams
   :: [LPat GhcPs]
   -> LHsExpr GhcPs
   -> TransformT IO (LHsExpr GhcPs)
+#if __GLASGOW_HASKELL__ >= 912
+mkLams [] e = return e
+mkLams vs e = do
+  ancg <- mkAnchor (SameLine 0)
+  ancm <- mkAnchor (SameLine 0)
+  let
+    ga = GrhsAnn Nothing (Right (EpUniTok d1 NormalSyntax))
+    ang = EpAnn ancg ga emptyComments
+    L l (Match x ctxt pats (GRHSs cs grhs binds)) = mkMatch (LamAlt LamSingle) (noLocA vs) e emptyLocalBinds
+    grhs' = case grhs of
+      [L lg (GRHS an guards rhs)] -> [L lg (GRHS ang guards rhs)]
+      _ -> fail "mkLams: lambda expression can only have a single grhs!"
+  let
+    lm = EpAnn d0 noAnn emptyComments
+    matches = L lm [L l (Match NoExtField ctxt pats (GRHSs cs grhs' binds))]
+    mg = mkMatchGroup (Generated OtherExpansion SkipPmc) matches
+  mkLocA (SameLine 1) $ HsLam (EpAnnLam (EpTok d1) Nothing) LamSingle mg
+#else
 mkLams [] e = return e
 mkLams vs e = do
   ancg <- mkAnchor (SameLine 0)
@@ -140,6 +184,7 @@ mkLams vs e = do
       mkMatchGroup (Generated SkipPmc) matches
 #endif
   mkLocA (SameLine 1) $ HsLam noExtField mg
+#endif
 
 mkLet :: Monad m => HsLocalBinds GhcPs -> LHsExpr GhcPs -> TransformT m (LHsExpr GhcPs)
 mkLet EmptyLocalBinds{} e = return e
@@ -153,19 +198,33 @@ mkLet lbs e = do
   le <- mkLocA (SameLine 1) $ HsLet an lbs e
   return le
 #else
+#if __GLASGOW_HASKELL__ >= 912
+  an <- mkEpAnn (DifferentLine 1 5) NoEpAnns
+  let tokLet = EpTok (EpaDelta noSrcSpan (SameLine 0) [])
+      tokIn = EpTok (EpaDelta noSrcSpan (DifferentLine 1 1) [])
+  le <- mkLocA (SameLine 1) $ HsLet (tokLet, tokIn) lbs e
+  return le
+#else
   an <- mkEpAnn (DifferentLine 1 5) NoEpAnns
   let tokLet = L (TokenLoc (EpaDelta (SameLine 0) [])) HsTok
       tokIn = L (TokenLoc (EpaDelta (DifferentLine 1 1) [])) HsTok
   le <- mkLocA (SameLine 1) $ HsLet an tokLet lbs tokIn e
   return le
 #endif
+#endif
 
 mkApps :: MonadIO m => LHsExpr GhcPs -> [LHsExpr GhcPs] -> TransformT m (LHsExpr GhcPs)
 mkApps e []     = return e
+#if __GLASGOW_HASKELL__ >= 912
+mkApps f (a:as) = do
+  f' <- mkLocA (SameLine 0) (HsApp NoExtField f a)
+  mkApps f' as
+#else
 mkApps f (a:as) = do
   -- lift $ liftIO $ debugPrint Loud "mkApps:f="  [showAst f]
   f' <- mkLocA (SameLine 0) (HsApp noAnn f a)
   mkApps f' as
+#endif
 
 -- GHC never generates HsAppTy in the parser, using HsAppsTy to keep a list
 -- of types.
@@ -256,27 +315,50 @@ patToExpr orig = case dLPat orig of
 #endif
     go (LazyPat _ pat) = patToExpr pat
     go (BangPat _ pat) = patToExpr pat
+#if __GLASGOW_HASKELL__ >= 912
+    go (ListPat an ps) = do
+      ps' <- mapM patToExpr ps
+      lift $ do
+        el <- mkLocA (SameLine 1) $ ExplicitList an ps'
+        return el
+#else
     go (ListPat _ ps) = do
       ps' <- mapM patToExpr ps
       lift $ do
         an <- mkEpAnn (SameLine 1)
                       (AnnList Nothing (Just (AddEpAnn AnnOpenS d0)) (Just (AddEpAnn AnnCloseS d0)) [] [])
         el <- mkLocA (SameLine 1) $ ExplicitList an ps'
-        -- setAnnsFor el [(G AnnOpenS, DP (0,0)), (G AnnCloseS, DP (0,0))]
         return el
+#endif
+#if __GLASGOW_HASKELL__ >= 912
     go (LitPat _ lit) = lift $ do
-      -- lit' <- cloneT lit
+      mkLocA (SameLine 1) $ HsLit NoExtField lit
+#else
+    go (LitPat _ lit) = lift $ do
       mkLocA (SameLine 1) $ HsLit noAnn lit
+#endif
+#if __GLASGOW_HASKELL__ >= 912
     go (NPat _ llit mbNeg _) = lift $ do
-      -- L _ lit <- cloneT llit
+      e <- mkLocA (SameLine 1) $ HsOverLit NoExtField (unLoc llit)
+      negE <- maybe (return e) (mkLocA (SameLine 0) . NegApp noAnn e) mbNeg
+      return negE
+#else
+    go (NPat _ llit mbNeg _) = lift $ do
       e <- mkLocA (SameLine 1) $ HsOverLit noAnn (unLoc llit)
       negE <- maybe (return e) (mkLocA (SameLine 0) . NegApp noAnn e) mbNeg
-      -- addAllAnnsT llit negE
       return negE
+#endif
 #if __GLASGOW_HASKELL__ < 904
     go (ParPat an p') = do
       p <- patToExpr p'
       lift $ mkLocA (SameLine 1) (HsPar an p)
+#else
+#if __GLASGOW_HASKELL__ >= 912
+    go (ParPat an p') = do
+      p <- patToExpr p'
+      let tokLP = EpTok (EpaDelta noSrcSpan (SameLine 0) [])
+          tokRP = EpTok (EpaDelta noSrcSpan (SameLine 0) [])
+      lift $ mkLocA (SameLine 1) (HsPar (tokLP, tokRP) p)
 #else
     go (ParPat an _ p' _) = do
       p <- patToExpr p'
@@ -284,12 +366,21 @@ patToExpr orig = case dLPat orig of
           tokRP = L (TokenLoc (EpaDelta (SameLine 0) [])) HsTok
       lift $ mkLocA (SameLine 1) (HsPar an tokLP p tokRP)
 #endif
+#endif
     go SigPat{} = error "patToExpr SigPat"
+#if __GLASGOW_HASKELL__ >= 912
+    go (TuplePat an ps boxity) = do
+      es <- forM ps $ \pat -> do
+        e <- patToExpr pat
+        return $ Present NoExtField e
+      lift $ mkLocA (SameLine 1) $ ExplicitTuple an es boxity
+#else
     go (TuplePat an ps boxity) = do
       es <- forM ps $ \pat -> do
         e <- patToExpr pat
         return $ Present noAnn e
       lift $ mkLocA (SameLine 1) $ ExplicitTuple an es boxity
+#endif
     go (VarPat _ i) = lift $ mkLocatedHsVar i
     go AsPat{} = error "patToExpr AsPat"
     go NPlusKPat{} = error "patToExpr NPlusKPat"
@@ -302,11 +393,19 @@ conPatHelper :: MonadIO m
              -> HsConPatDetails GhcPs
              -> PatQ m (LHsExpr GhcPs)
 conPatHelper con (InfixCon x y) =
+#if __GLASGOW_HASKELL__ >= 912
+  lift . mkLocA (SameLine 1)
+               =<< OpApp <$> pure NoExtField
+                         <*> patToExpr x
+                         <*> lift (mkLocatedHsVar con)
+                         <*> patToExpr y
+#else
   lift . mkLocA (SameLine 1)
                =<< OpApp <$> pure noAnn
                          <*> patToExpr x
                          <*> lift (mkLocatedHsVar con)
                          <*> patToExpr y
+#endif
 conPatHelper con (PrefixCon tyargs xs) = do
   f <- lift $ mkLocatedHsVar con
   as <- mapM patToExpr xs
@@ -327,7 +426,11 @@ precedence :: FixityEnv -> HsExpr GhcPs -> Maybe Fixity
 #if __GLASGOW_HASKELL__ < 908
 precedence _        (HsApp {})       = Just $ Fixity (SourceText "HsApp") 10 InfixL
 #else
+#if __GLASGOW_HASKELL__ >= 912
+precedence _        (HsApp {})       = Just $ Fixity 10 InfixL
+#else
 precedence _        (HsApp {})       = Just $ Fixity (SourceText (fsLit "HsApp")) 10 InfixL
+#endif
 #endif
 precedence fixities (OpApp _ _ op _) = Just $ lookupOp op fixities
 precedence _        _                = Nothing
@@ -339,16 +442,28 @@ parenify Context{..} le@(L _ e)
   | needed ctxtParentPrec (precedence ctxtFixityEnv e) && needsParens e =
     mkParen' (getEntryDP le) (\an -> HsPar an (setEntryDP le (SameLine 0)))
 #else
+#if __GLASGOW_HASKELL__ >= 912
+  | needed ctxtParentPrec (precedence ctxtFixityEnv e) && needsParens e = do
+    let tokLP = EpTok (EpaDelta noSrcSpan (SameLine 0) [])
+        tokRP = EpTok (EpaDelta noSrcSpan (SameLine 0) [])
+     in mkLocA (getEntryDP le) (HsPar (tokLP, tokRP) (setEntryDP le (SameLine 0)))
+#else
   | needed ctxtParentPrec (precedence ctxtFixityEnv e) && needsParens e = do
     let tokLP = L (TokenLoc (EpaDelta (SameLine 0) [])) HsTok
         tokRP = L (TokenLoc (EpaDelta (SameLine 0) [])) HsTok
      in mkParen' (getEntryDP le) (\an -> HsPar an tokLP (setEntryDP le (SameLine 0)) tokRP)
 #endif
+#endif
   | otherwise = return le
   where
            {- parent -}               {- child -}
+#if __GLASGOW_HASKELL__ >= 912
+#else
+    needed (HasPrec (Fixity p1 d1)) (Just (Fixity p2 d2)) =
+      p1 > p2 || (p1 == p2 && (d1 /= d2 || d2 == InfixN))
     needed (HasPrec (Fixity _ p1 d1)) (Just (Fixity _ p2 d2)) =
       p1 > p2 || (p1 == p2 && (d1 /= d2 || d2 == InfixN))
+#endif
     needed NeverParen _ = False
     needed _ Nothing = True
     needed _ _ = False
@@ -359,7 +474,7 @@ getUnparened = mkT unparen `extT` unparenT `extT` unparenP
 -- TODO: what about comments?
 unparen :: LHsExpr GhcPs -> LHsExpr GhcPs
 unparen expr = case expr of
-#if __GLASGOW_HASKELL__ < 904
+#if __GLASGOW_HASKELL__ < 904 || __GLASGOW_HASKELL__ >= 912
   L _ (HsPar _ e)
 #else
   L _ (HsPar _ _ e _)
@@ -374,13 +489,15 @@ unparen expr = case expr of
 needsParens :: HsExpr GhcPs -> Bool
 needsParens = hsExprNeedsParens (PprPrec 10)
 
+#if __GLASGOW_HASKELL__ >= 912
+#else
 mkParen :: (Data x, Monad m, Monoid an, Typeable an)
   => (LocatedAn an x -> x) -> LocatedAn an x -> TransformT m (LocatedAn an x)
 mkParen k e = do
   pe <- mkLocA (SameLine 1) (k e)
-  -- _ <- setAnnsFor pe [(G AnnOpenP, DP (0,0)), (G AnnCloseP, DP (0,0))]
   (e0,pe0) <- swapEntryDPT e pe
   return pe0
+#endif
 
 #if __GLASGOW_HASKELL__ < 904
 mkParen' :: (Data x, Monad m, Monoid an)
@@ -392,23 +509,38 @@ mkParen' dp k = do
   pe <- mkLocA dp (k (EpAnn anc an emptyComments))
   return pe
 #else
-mkParen' :: (Data x, Monad m, Monoid an)
+mkParen' :: (Data x, Monad m, AnnConstraint an)
          => DeltaPos -> (EpAnn NoEpAnns -> x) -> TransformT m (LocatedAn an x)
 mkParen' dp k = do
+#if __GLASGOW_HASKELL__ >= 912
+  let an = NoEpAnns
+  l <- uniqueSrcSpanT
+  let anc = d0
+  pe <- mkLocA dp (k (EpAnn anc an emptyComments))
+  return pe
+#else
   let an = NoEpAnns
   l <- uniqueSrcSpanT
   let anc = Anchor (realSrcSpan l) (MovedAnchor (SameLine 0))
   pe <- mkLocA dp (k (EpAnn anc an emptyComments))
   return pe
+#endif
 
-mkParenTy :: (Data x, Monad m, Monoid an)
+mkParenTy :: (Data x, Monad m, AnnConstraint an)
          => DeltaPos -> (EpAnn AnnParen -> x) -> TransformT m (LocatedAn an x)
+#if __GLASGOW_HASKELL__ >= 912
+mkParenTy dp k = do
+  let an = AnnParens (EpTok d0) (EpTok d0)
+  pe <- mkLocA dp (k (EpAnn d0 an emptyComments))
+  return pe
+#else
 mkParenTy dp k = do
   let an = AnnParen AnnParens d0 d0
   l <- uniqueSrcSpanT
   let anc = Anchor (realSrcSpan l) (MovedAnchor (SameLine 0))
   pe <- mkLocA dp (k (EpAnn anc an emptyComments))
   return pe
+#endif
 #endif
 
 -- This explicitly operates on 'Located (Pat GhcPs)' instead of 'LPat GhcPs'
@@ -424,9 +556,15 @@ parenifyP Context{..} p@(L _ pat)
 #if __GLASGOW_HASKELL__ < 904
     mkParen' (getEntryDP p) (\an -> ParPat an (setEntryDP p (SameLine 0)))
 #else
+#if __GLASGOW_HASKELL__ >= 912
+    let tokLP = EpTok d0
+        tokRP = EpTok d0
+     in mkParen' (getEntryDP p) (\an -> ParPat (tokLP, tokRP) (setEntryDP p (SameLine 0)))
+#else
     let tokLP = L (TokenLoc (EpaDelta (SameLine 0) [])) HsTok
         tokRP = L (TokenLoc (EpaDelta (SameLine 0) [])) HsTok
      in mkParen' (getEntryDP p) (\an -> ParPat an tokLP (setEntryDP p (SameLine 0)) tokRP)
+#endif
 #endif
   | otherwise = return p
   where
@@ -454,10 +592,25 @@ parenifyT Context{..} lty@(L _ ty)
 #if __GLASGOW_HASKELL__ < 904
       mkParen' (getEntryDP lty) (\an -> HsParTy an (setEntryDP lty (SameLine 0)))
 #else
+#if __GLASGOW_HASKELL__ >= 912
+      mkLocA (getEntryDP lty)
+             (HsParTy (EpTok d0, EpTok d0) (setEntryDP lty (SameLine 0)))
+#else
       mkParenTy (getEntryDP lty) (\an -> HsParTy an (setEntryDP lty (SameLine 0)))
+#endif
 #endif
   | otherwise = return lty
   where
+#if __GLASGOW_HASKELL__ >= 912
+    needed t = case ctxtParentPrec of
+      HasPrec (Fixity prec InfixN) -> hsTypeNeedsParens (PprPrec prec) t
+      -- We just assume we won't have mixed 'FixityDirection's for 'HsType',
+      -- this is not true for 'HsFunTy' (@infixr 2@) and 'HsOpTy' (@infixl 2@).
+      -- Currently, we will simply always add parens around 'HsOpTy'.
+      HasPrec (Fixity prec _) -> hsTypeNeedsParens (PprPrec $ prec - 1) t
+      IsLhs -> False
+      NeverParen -> False
+#else
     needed t = case ctxtParentPrec of
       HasPrec (Fixity _ prec InfixN) -> hsTypeNeedsParens (PprPrec prec) t
       -- We just assume we won't have mixed 'FixityDirection's for 'HsType',
@@ -466,6 +619,7 @@ parenifyT Context{..} lty@(L _ ty)
       HasPrec (Fixity _ prec _) -> hsTypeNeedsParens (PprPrec $ prec - 1) t
       IsLhs -> False
       NeverParen -> False
+#endif
 
 unparenT :: LHsType GhcPs -> LHsType GhcPs
 unparenT (L _ (HsParTy _ ty)) = ty
@@ -475,7 +629,11 @@ unparenP :: LPat GhcPs -> LPat GhcPs
 #if __GLASGOW_HASKELL__ < 904
 unparenP (L _ (ParPat _ p)) = p
 #else
+#if __GLASGOW_HASKELL__ >= 912
+unparenP (L _ (ParPat _ p)) = p
+#else
 unparenP (L _ (ParPat _ _ p _)) = p
+#endif
 #endif
 unparenP p = p
 
