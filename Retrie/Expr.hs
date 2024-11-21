@@ -37,7 +37,8 @@ module Retrie.Expr
 
 #if __GLASGOW_HASKELL__ >= 912
   , noLocA1
-  , noLocA2
+  , noLocD0
+  , noLocD1
 #endif
   ) where
 
@@ -158,7 +159,7 @@ mkLams vs e = do
   let
     ga = GrhsAnn Nothing (Right (EpUniTok d1 NormalSyntax))
     ang = EpAnn ancg ga emptyComments
-    L l (Match x ctxt pats (GRHSs cs grhs binds)) = mkMatch (LamAlt LamSingle) (noLocA2 vs) e emptyLocalBinds
+    L l (Match x ctxt pats (GRHSs cs grhs binds)) = mkMatch (LamAlt LamSingle) (noLocD0 vs) e emptyLocalBinds
     grhs' = case grhs of
       [L lg (GRHS an guards rhs)] -> [L lg (GRHS ang guards rhs)]
       _ -> fail "mkLams: lambda expression can only have a single grhs!"
@@ -166,7 +167,7 @@ mkLams vs e = do
     lm = EpAnn d0 noAnn emptyComments
     matches = L lm [L l (Match NoExtField ctxt pats (GRHSs cs grhs' binds))]
     mg = mkMatchGroup (Generated OtherExpansion SkipPmc) matches
-  mkLocA (SameLine 1) $ HsLam (EpAnnLam (EpTok d1) Nothing) LamSingle mg
+  mkLocA (SameLine 1) $ HsLam (EpAnnLam (EpTok d0) Nothing) LamSingle mg
 #else
 mkLams [] e = return e
 mkLams vs e = do
@@ -654,7 +655,8 @@ noLocA1 :: (NoAnn an) => a -> LocatedAn an a
 noLocA1 a = L (EpAnn d1 noAnn emptyComments) a
 
 -- noLocA2 :: a -> LocatedAn an a
-noLocA2 a = L d1 a
+noLocD0 a = L d0 a
+noLocD1 a = L d1 a
 #endif
 
 --------------------------------------------------------------------
