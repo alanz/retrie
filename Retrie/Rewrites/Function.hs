@@ -65,7 +65,14 @@ matchToRewrites
 matchToRewrites e imps dir (L _ alt) = do
   -- lift $ debugPrint Loud "matchToRewrites:e="  [showAst e]
   let
-    pats = unLoc $ m_pats alt
+#if __GLASGOW_HASKELL__ >= 912
+    L lp pats' = m_pats alt
+    pats = case pats' of
+             [] -> []
+             (L (EpAnn _ an cs) h:t) -> L (EpAnn lp an cs) h:t
+#else
+    pats = m_pats alt
+#endif
     grhss = m_grhss alt
   qss <- for (zip (inits pats) (tails pats)) $
     makeFunctionQuery e imps dir grhss mkApps
@@ -110,11 +117,16 @@ makeFunctionQuery e imps dir grhss mkAppFn (argpats, bndpats)
       bs = collectPatsBinders CollNoDictBinders argpats
     -- See Note [Wildcards]
     (es,(_,bs')) <- runStateT (mapM patToExpr argpats) (wildSupply bs, bs)
+    -- lift $ debugPrint Loud "makeFunctionQuery:argpats="  [showAst argpats]
     -- lift $ debugPrint Loud "makeFunctionQuery:e="  [showAst e]
+    -- lift $ debugPrint Loud "makeFunctionQuery:grhss="  [showAst grhss]
+    -- lift $ debugPrint Loud "makeFunctionQuery:es="  [showAst es]
     lhs <- mkAppFn e es
+    -- lift $ debugPrint Loud "makeFunctionQuery:lhs="  [showAst lhs]
     for rhss $ \ grhs -> do
       le <- mkLet lbs (grhsToExpr grhs)
       rhs <- mkLams bndpats le
+      -- lift $ debugPrint Loud "makeFunctionQuery:rhs="  [showAst rhs]
       let
         (pat, temp) =
           case dir of

@@ -93,6 +93,7 @@ replaceImpl c e = do
       -- orig <- printA' <$> pruneA e
 
       repl <- printNoLeadingSpaces <$> pruneA res
+
       -- repl <- printA' <$> pruneA r
       -- repl <- printA' <$> pruneA res
       -- repl <- return $ showAst t'
@@ -101,9 +102,10 @@ replaceImpl c e = do
       -- lift $ liftIO $ debugPrint Loud "replaceImpl:repl="  [repl]
 
       -- lift $ liftIO $ debugPrint Loud "replaceImpl:e="  [showAst e]
+      -- lift $ liftIO $ debugPrint Loud "replaceImpl:t'=" [showAst t']
       -- lift $ liftIO $ debugPrint Loud "replaceImpl:r="  [showAst r]
       -- lift $ liftIO $ debugPrint Loud "replaceImpl:r0="  [showAst r0]
-      -- lift $ liftIO $ debugPrint Loud "replaceImpl:t'=" [showAst t']
+      -- lift $ liftIO $ debugPrint Loud "replaceImpl:res'=" [showAst res']
       -- lift $ liftIO $ debugPrint Loud "replaceImpl:res=" [showAst res]
 
       let replacement = Replacement (getLocA e) orig repl
@@ -126,14 +128,13 @@ data Replacement = Replacement
 data Change = NoChange | Change [Replacement] [AnnotatedImports]
 
 instance Semigroup Change where
-  (<>) = mappend
+  (<>) NoChange     other        = other
+  (<>) other        NoChange     = other
+  (<>) (Change rs1 is1) (Change rs2 is2) =
+    Change (rs1 <> rs2) (is1 <> is2)
 
 instance Monoid Change where
   mempty = NoChange
-  mappend NoChange     other        = other
-  mappend other        NoChange     = other
-  mappend (Change rs1 is1) (Change rs2 is2) =
-    Change (rs1 <> rs2) (is1 <> is2)
 
 -- The location of 'e' accurately points to the first non-space character
 -- of 'e', but when we exactprint 'e', we might get some leading spaces (if

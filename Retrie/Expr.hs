@@ -223,7 +223,7 @@ mkApps e []     = return e
 #if __GLASGOW_HASKELL__ >= 912
 mkApps f (a:as) = do
   -- lift $ liftIO $ debugPrint Loud "mkApps:f="  [showAst f]
-  lift $ liftIO $ debugPrint Loud "mkApps:a="  [showAst a]
+  -- lift $ liftIO $ debugPrint Loud "mkApps:a="  [showAst a]
   f' <- mkLocA (SameLine 0) (HsApp NoExtField f a)
   mkApps f' as
 #else
