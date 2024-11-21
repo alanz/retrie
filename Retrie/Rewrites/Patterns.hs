@@ -162,7 +162,7 @@ buildMatch names rhs = do
   pats <- traverse mkVarPat names
   let bs = collectPatBinders CollNoDictBinders rhs
   (rhsExpr,(_,_bs')) <- runStateT (patToExpr rhs) (wildSupply bs, bs)
-  let alt = mkMatch PatSyn (noLocA pats) rhsExpr emptyLocalBinds
+  let alt = mkMatch PatSyn (noLocA2 pats) rhsExpr emptyLocalBinds
   return [alt]
 #else
 buildMatch names rhs = do

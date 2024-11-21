@@ -34,6 +34,11 @@ module Retrie.Expr
   , unparenP
   , unparenT
   , wildSupply
+
+#if __GLASGOW_HASKELL__ >= 912
+  , noLocA1
+  , noLocA2
+#endif
   ) where
 
 import Control.Monad
@@ -153,7 +158,7 @@ mkLams vs e = do
   let
     ga = GrhsAnn Nothing (Right (EpUniTok d1 NormalSyntax))
     ang = EpAnn ancg ga emptyComments
-    L l (Match x ctxt pats (GRHSs cs grhs binds)) = mkMatch (LamAlt LamSingle) (noLocA vs) e emptyLocalBinds
+    L l (Match x ctxt pats (GRHSs cs grhs binds)) = mkMatch (LamAlt LamSingle) (noLocA2 vs) e emptyLocalBinds
     grhs' = case grhs of
       [L lg (GRHS an guards rhs)] -> [L lg (GRHS ang guards rhs)]
       _ -> fail "mkLams: lambda expression can only have a single grhs!"
@@ -217,6 +222,8 @@ mkApps :: MonadIO m => LHsExpr GhcPs -> [LHsExpr GhcPs] -> TransformT m (LHsExpr
 mkApps e []     = return e
 #if __GLASGOW_HASKELL__ >= 912
 mkApps f (a:as) = do
+  -- lift $ liftIO $ debugPrint Loud "mkApps:f="  [showAst f]
+  lift $ liftIO $ debugPrint Loud "mkApps:a="  [showAst a]
   f' <- mkLocA (SameLine 0) (HsApp NoExtField f a)
   mkApps f' as
 #else
@@ -458,8 +465,12 @@ parenify Context{..} le@(L _ e)
   where
            {- parent -}               {- child -}
 #if __GLASGOW_HASKELL__ >= 912
-#else
     needed (HasPrec (Fixity p1 d1)) (Just (Fixity p2 d2)) =
+      p1 > p2 || (p1 == p2 && (d1 /= d2 || d2 == InfixN))
+    needed (HasPrec (Fixity p1 d1)) (Just (Fixity p2 d2)) =
+      p1 > p2 || (p1 == p2 && (d1 /= d2 || d2 == InfixN))
+#else
+    needed (HasPrec (Fixity _ p1 d1)) (Just (Fixity _ p2 d2)) =
       p1 > p2 || (p1 == p2 && (d1 /= d2 || d2 == InfixN))
     needed (HasPrec (Fixity _ p1 d1)) (Just (Fixity _ p2 d2)) =
       p1 > p2 || (p1 == p2 && (d1 /= d2 || d2 == InfixN))
@@ -487,6 +498,7 @@ unparen expr = case expr of
 
 -- | hsExprNeedsParens is not always up-to-date, so this allows us to override
 needsParens :: HsExpr GhcPs -> Bool
+-- needsParens = hsExprNeedsParens (PprPrec 10)
 needsParens = hsExprNeedsParens (PprPrec 10)
 
 #if __GLASGOW_HASKELL__ >= 912
@@ -636,6 +648,14 @@ unparenP (L _ (ParPat _ _ p _)) = p
 #endif
 #endif
 unparenP p = p
+
+#if __GLASGOW_HASKELL__ >= 912
+noLocA1 :: (NoAnn an) => a -> LocatedAn an a
+noLocA1 a = L (EpAnn d1 noAnn emptyComments) a
+
+-- noLocA2 :: a -> LocatedAn an a
+noLocA2 a = L d1 a
+#endif
 
 --------------------------------------------------------------------
 
