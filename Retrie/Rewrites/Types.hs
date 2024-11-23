@@ -11,12 +11,14 @@ module Retrie.Rewrites.Types where
 
 import Control.Monad
 import Data.Maybe
+import Control.Monad.State.Lazy
 
 import Retrie.ExactPrint
 import Retrie.Expr
 import Retrie.GHC
 import Retrie.Quantifiers
 import Retrie.Types
+import Retrie.Util
 
 typeSynonymsToRewrites
   :: [(FastString, Direction)]
@@ -27,6 +29,7 @@ typeSynonymsToRewrites
   -> IO (UniqFM FastString [Rewrite (LHsType GhcPs)])
 #endif
 typeSynonymsToRewrites specs am = fmap astA $ transformA am $ \ m -> do
+  -- lift $ debugPrint Loud "mkTypeRewrite:am="  [showAst am]
   let
     fsMap = uniqBag specs
     tySyns =
@@ -60,6 +63,9 @@ mkTypeRewrite d (lhsName, vars, rhs) = do
     let tv' = setEntryDP tv (SameLine 1)
     return tv'
   lhsApps <- mkHsAppsTy (tc:args)
+  -- lift $ debugPrint Loud "mkTypeRewrite:lhsName="  [showAst lhsName]
+  -- lift $ debugPrint Loud "mkTypeRewrite:lhsApps="  [showAst lhsApps]
+  -- lift $ debugPrint Loud "mkTypeRewrite:rhs="  [showAst rhs]
   let
     (pat, tmp) = case d of
       LeftToRight -> (lhsApps, rhs)

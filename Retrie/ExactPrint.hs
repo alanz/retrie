@@ -90,9 +90,15 @@ type AnnConstraint an = (NoAnn an, Semigroup an)
 type AnnConstraint an = (Monoid an)
 #endif
 
+#if __GLASGOW_HASKELL__ >= 912
 transferEntryDP :: (Monad m, Typeable t1, Typeable t2)
   => LocatedAn t1 a -> LocatedAn t2 b -> TransformT m (LocatedAn t2 b)
 transferEntryDP a b = return $ Transform.transferEntryDP a b
+#else
+transferEntryDP :: (Monad m, Typeable t1, Monoid t2, Typeable t2)
+  => LocatedAn t1 a -> LocatedAn t2 b -> TransformT m (LocatedAn t2 b)
+transferEntryDP a b = Transform.transferEntryDP a b
+#endif
 
 
 -- Fixity traversal -----------------------------------------------------------
@@ -259,9 +265,15 @@ fixOneEntryPat pat
 
 
 -- Swap entryDP and prior comments between the two args
+#if __GLASGOW_HASKELL__ >= 912
 swapEntryDPT
   :: (Data a, Data b, Monad m, Typeable a1, Typeable a2)
   => LocatedAn a1 a -> LocatedAn a2 b -> TransformT m (LocatedAn a1 a, LocatedAn a2 b)
+#else
+swapEntryDPT
+  :: (Data a, Data b, Monad m, Typeable a1, Monoid a2, Monoid a1, Typeable a2)
+  => LocatedAn a1 a -> LocatedAn a2 b -> TransformT m (LocatedAn a1 a, LocatedAn a2 b)
+#endif
 swapEntryDPT a b = do
   b' <- transferEntryDP a b
   a' <- transferEntryDP b a

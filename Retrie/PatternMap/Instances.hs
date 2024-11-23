@@ -394,14 +394,10 @@ instance PatternMap EMap where
         m { emSecL = mAlter env vs o (toA (mAlter env vs lhs f)) (emSecL m) }
       go (SectionR _ o rhs) =
         m { emSecR = mAlter env vs o (toA (mAlter env vs rhs f)) (emSecR m) }
-#if __GLASGOW_HASKELL__ < 904
-      go (HsLet _ lbs e') =
-#else
-#if __GLASGOW_HASKELL__ >= 912
+#if __GLASGOW_HASKELL__ < 904 ||__GLASGOW_HASKELL__ >= 912
       go (HsLet _ lbs e') =
 #else
       go (HsLet _ _ lbs _ e') =
-#endif
 #endif
         let
           bs = collectLocalBinders CollNoDictBinders lbs
@@ -512,14 +508,10 @@ instance PatternMap EMap where
         mapFor emRecordUpd >=> mMatch env e' >=> mMatch env (fieldsToRdrNamesUpd fs)
       go (SectionL _ lhs o) = mapFor emSecL >=> mMatch env o >=> mMatch env lhs
       go (SectionR _ o rhs) = mapFor emSecR >=> mMatch env o >=> mMatch env rhs
-#if __GLASGOW_HASKELL__ < 904
-      go (HsLet _ lbs e') =
-#else
-#if __GLASGOW_HASKELL__ >= 912
+#if __GLASGOW_HASKELL__ < 904 || __GLASGOW_HASKELL__ >= 912
       go (HsLet _ lbs e') =
 #else
       go (HsLet _ _ lbs _ e') =
-#endif
 #endif
         let
           bs = collectLocalBinders CollNoDictBinders lbs

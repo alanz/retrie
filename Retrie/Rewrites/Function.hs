@@ -117,6 +117,7 @@ makeFunctionQuery e imps dir grhss mkAppFn (argpats, bndpats)
       bs = collectPatsBinders CollNoDictBinders argpats
     -- See Note [Wildcards]
     (es,(_,bs')) <- runStateT (mapM patToExpr argpats) (wildSupply bs, bs)
+    -- lift $ debugPrint Loud "makeFunctionQuery:bs'="  [showAst bs']
     -- lift $ debugPrint Loud "makeFunctionQuery:argpats="  [showAst argpats]
     -- lift $ debugPrint Loud "makeFunctionQuery:e="  [showAst e]
     -- lift $ debugPrint Loud "makeFunctionQuery:grhss="  [showAst grhss]

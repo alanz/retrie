@@ -9,6 +9,7 @@ module Retrie.Subst (subst) where
 
 import Control.Monad.Writer.Strict
 import Data.Generics
+import Data.Maybe
 
 import Retrie.Context
 import Retrie.ExactPrint
@@ -53,12 +54,13 @@ substExpr
 substExpr ctxt e@(L l1 (HsVar x (L l2 v))) =
   case lookupHoleVar v ctxt of
     Just (HoleExpr eA) -> do
+      -- lift $ liftIO $ debugPrint Loud "substExpr:HoleExpr:rdrFS v" [show $ rdrFS v]
+      -- lift $ liftIO $ debugPrint Loud "substExpr:HoleExpr:lookup" [show $ lookupSubst (rdrFS v) (fromJust (ctxtSubst ctxt))]
+      -- lift $ liftIO $ debugPrint Loud "substExpr:HoleExpr:ctxt" [show (showAst $ ctxtBinders ctxt, ctxtSubst ctxt)]
       -- lift $ liftIO $ debugPrint Loud "substExpr:HoleExpr:e" [showAst e]
       -- lift $ liftIO $ debugPrint Loud "substExpr:HoleExpr:eA" [showAst eA]
       e0 <- graftA (unparen <$> eA)
-      let comments = hasComments e0
-      -- unless comments $ transferEntryDPT e e'
-      e1 <- if comments
+      e1 <- if hasComments e0
                then return e0
                else transferEntryDP e e0
       e2 <- transferAnnsT isComma e e1
@@ -78,8 +80,8 @@ substPat
 substPat ctxt (dLPat -> Just p@(L l1 (VarPat x _vl@(L l2 v)))) = fmap cLPat $
   case lookupHoleVar v ctxt of
     Just (HolePat pA) -> do
-      -- lift $ liftIO $ debugPrint Loud "substPat:HolePat:p" [showAst p]
-      -- lift $ liftIO $ debugPrint Loud "substPat:HolePat:pA" [showAst pA]
+      lift $ liftIO $ debugPrint Loud "substPat:HolePat:p" [showAst p]
+      lift $ liftIO $ debugPrint Loud "substPat:HolePat:pA" [showAst pA]
       p' <- graftA (unparenP <$> pA)
       p0 <- transferEntryAnnsT isComma p p'
       -- the relevant entry delta is sometimes attached to
