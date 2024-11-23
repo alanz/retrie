@@ -119,8 +119,8 @@ substHsMatchContext
   -> TransformT m (HsMatchContext RdrName)
 #else
 #if __GLASGOW_HASKELL__ >= 912
-  -> HsMatchContext (Located RdrName)
-  -> TransformT m (HsMatchContext (Located RdrName))
+  -> HsMatchContext (LocatedN RdrName)
+  -> TransformT m (HsMatchContext (LocatedN RdrName))
 #else
   -> HsMatchContext GhcPs
   -> TransformT m (HsMatchContext GhcPs)
