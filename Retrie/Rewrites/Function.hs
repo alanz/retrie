@@ -93,7 +93,7 @@ irrefutablePat = go . unLoc
 #else
     go (AsPat _ _ _ p) = irrefutablePat p
 #endif
-#if __GLASGOW_HASKELL__ <= 904 || __GLASGOW_HASKELL__ >= 912
+#if __GLASGOW_HASKELL__ >= 912
     go (ParPat _ p) = irrefutablePat p
 #else
     go (ParPat _ _ p _) = irrefutablePat p
