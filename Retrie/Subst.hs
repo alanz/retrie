@@ -80,8 +80,8 @@ substPat
 substPat ctxt (dLPat -> Just p@(L l1 (VarPat x _vl@(L l2 v)))) = fmap cLPat $
   case lookupHoleVar v ctxt of
     Just (HolePat pA) -> do
-      lift $ liftIO $ debugPrint Loud "substPat:HolePat:p" [showAst p]
-      lift $ liftIO $ debugPrint Loud "substPat:HolePat:pA" [showAst pA]
+      -- lift $ liftIO $ debugPrint Loud "substPat:HolePat:p" [showAst p]
+      -- lift $ liftIO $ debugPrint Loud "substPat:HolePat:pA" [showAst pA]
       p' <- graftA (unparenP <$> pA)
       p0 <- transferEntryAnnsT isComma p p'
       -- the relevant entry delta is sometimes attached to

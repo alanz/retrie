@@ -108,6 +108,10 @@ runOneModule
   -> IO b
 runOneModule writeFn Options{..} r cpp = do
   -- debugPrint Loud "runOneModule" ["enter"]
+  -- case cpp of
+  --     NoCPP ast -> debugPrint Loud "runOneModule" [showAst ast]
+  --     _ -> return ()
+
   (x, cpp', changed) <- runRetrie fixityEnv r cpp
   case changed of
     NoChange -> return mempty

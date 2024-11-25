@@ -243,8 +243,7 @@ mkHsAppsTy (t:ts) = foldM (\t1 t2 -> mkLocA (SameLine 1) (HsAppTy noExtField t1 
 mkTyVar :: Monad m => LocatedN RdrName -> TransformT m (LHsType GhcPs)
 mkTyVar nm = do
   tv <- mkLocA (SameLine 1) (HsTyVar noAnn NotPromoted nm)
-  -- _ <- setAnnsFor nm [(G AnnVal, DP (0,0))]
-  (tv', nm') <- swapEntryDPT tv nm
+  (tv', _nm') <- swapEntryDPT tv nm
   return tv'
 
 mkVarPat :: Monad m => LocatedN RdrName -> TransformT m (LPat GhcPs)
@@ -259,9 +258,7 @@ mkConPatIn
   -- -> HsConDetails Void (LocatedN RdrName) [RecordPatSynField GhcPs]
   -> TransformT m (LPat GhcPs)
 mkConPatIn patName params = do
-  p <- mkLocA (SameLine 0) $ ConPat noAnn patName params
-  -- setEntryDPT p (DP (0,0))
-  return p
+  mkLocA (SameLine 0) $ ConPat noAnn patName params
 
 -------------------------------------------------------------------------------
 

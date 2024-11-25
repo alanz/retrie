@@ -80,6 +80,7 @@ import Retrie.Util
 
 import GHC.Stack
 import Debug.Trace
+import GHC.Core.Opt.WorkWrap.Utils (DataConPatContext(dcpc_args))
 
 debug :: c -> String -> c
 debug c s = trace s c
@@ -97,7 +98,7 @@ transferEntryDP a b = return $ Transform.transferEntryDP a b
 #else
 transferEntryDP :: (Monad m, Typeable t1, Monoid t2, Typeable t2)
   => LocatedAn t1 a -> LocatedAn t2 b -> TransformT m (LocatedAn t2 b)
-transferEntryDP a b = Transform.transferEntryDP a b
+transferEntryDP = Transform.transferEntryDP
 #endif
 
 
@@ -130,25 +131,22 @@ fixOneExpr
   => FixityEnv
   -> LHsExpr GhcPs
   -> TransformT m (LHsExpr GhcPs)
-fixOneExpr env (L l2 (OpApp x2 ap1@(L l1 (OpApp x1 x op1 y)) op2 z))
+fixOneExpr env (L l2 (OpApp x2 ap1@(L _l1 (OpApp x1 x op1 y)) op2 z))
   | associatesRight (lookupOp op1 env) (lookupOp op2 env) = do
-    -- lift $ liftIO $ debugPrint Loud "fixOneExpr:(l1,l2)="  [showAst (l1,l2)]
-    let ap2' = L (stripComments l2) $ OpApp x2 y op2 z
-    (ap1_0, ap2'_0) <- swapEntryDPT ap1 ap2'
-    ap1_1 <- transferAnnsT isComma ap2'_0 ap1_0
+    -- lift $ liftIO $ debugPrint Loud "fixOneExpr:(l1,l2)="  [showAst (_l1,l2)]
+    let rhs0 = L (stripComments l2) $ OpApp x2 y op2 z
+    rhs1 <- transferEntryDP ap1 rhs0
     -- lift $ liftIO $ debugPrint Loud "fixOneExpr:recursing"  []
-    rhs <- fixOneExpr env ap2'_0
+    rhs <- fixOneExpr env rhs1
     -- lift $ liftIO $ debugPrint Loud "fixOneExpr:returning"  [showAst (L l2 $ OpApp x1 x op1 rhs)]
-    -- return $ L l1 $ OpApp x1 x op1 rhs
     return $ L l2 $ OpApp x1 x op1 rhs
 fixOneExpr _ e = return e
 
 fixOnePat :: Monad m => FixityEnv -> LPat GhcPs -> TransformT m (LPat GhcPs)
-fixOnePat env (dLPat -> Just (L l2 (ConPat ext2 op2 (InfixCon (dLPat -> Just ap1@(L l1 (ConPat ext1 op1 (InfixCon x y)))) z))))
+fixOnePat env (dLPat -> Just (L l2 (ConPat ex2 op2 (InfixCon (dLPat -> Just ap1@(L l1 (ConPat ext1 op1 (InfixCon x y)))) z))))
   | associatesRight (lookupOpRdrName op1 env) (lookupOpRdrName op2 env) = do
-    let ap2' = L l2 (ConPat ext2 op2 (InfixCon y z))
-    (ap1_0, ap2'_0) <- swapEntryDPT ap1 ap2'
-    ap1_1 <- transferAnnsT isComma ap2' ap1
+    let ap2' = L l2 (ConPat ex2 op2 (InfixCon y z))
+    (_ap1_0, ap2'_0) <- swapEntryDPT ap1 ap2'
     rhs <- fixOnePat env (cLPat ap2'_0)
     return $ cLPat $ L l1 (ConPat ext1 op1 (InfixCon x rhs))
 fixOnePat _ e = return e
@@ -174,23 +172,6 @@ fixOneEntry
   -> TransformT m (LocatedA a, LocatedA a)
 fixOneEntry e x = do
   -- lift $ liftIO $ debugPrint Loud "fixOneEntry:(e,x)="  [showAst (e,x)]
-  -- -- anns <- getAnnsT
-  -- let
-  --   zeros = SameLine 0
-  --   (xdp, ard) =
-  --     case M.lookup (mkAnnKey x) anns of
-  --       Nothing -> (zeros, zeros)
-  --       Just ann -> (annLeadingCommentEntryDelta ann, annEntryDelta ann)
-  --   xr = getDeltaLine xdp
-  --   xc = deltaColumn xdp
-  --   actualRow = getDeltaLine ard
-  --   edp =
-  --     maybe zeros annLeadingCommentEntryDelta $ M.lookup (mkAnnKey e) anns
-  --   er = getDeltaLine edp
-  --   ec = deltaColumn edp
-  -- when (actualRow == 0) $ do
-  --   setEntryDPT e $ deltaPos (er, xc + ec)
-  --   setEntryDPT x $ deltaPos (xr, 0)
 
   -- We assume that ghc-exactprint has converted all Anchor's to use their delta variants.
   -- Get the dp for the x component
@@ -202,36 +183,27 @@ fixOneEntry e x = do
   let er = getDeltaLine edp
   let ec = deltaColumn edp
   case xdp of
-    SameLine n -> do
+    SameLine _l -> do
+      -- lift $ liftIO $ debugPrint Loud "fixOneEntry:(xdp,l)="  [showAst (xdp,l)]
       -- lift $ liftIO $ debugPrint Loud "fixOneEntry:(xdp,edp)="  [showAst (xdp,edp)]
       -- lift $ liftIO $ debugPrint Loud "fixOneEntry:(dpx,dpe)="  [showAst ((deltaPos er (xc + ec)),(deltaPos xr 0))]
-      -- lift $ liftIO $ debugPrint Loud "fixOneEntry:e'="  [showAst e]
+      -- lift $ liftIO $ debugPrint Loud "fixOneEntry:x="  [showAst x]
+      -- lift $ liftIO $ debugPrint Loud "fixOneEntry:new dp="  [showAst (deltaPos er (xc + ec))]
       -- lift $ liftIO $ debugPrint Loud "fixOneEntry:e'="  [showAst (setEntryDP e (deltaPos er (xc + ec)))]
+      -- lift $ liftIO $ debugPrint Loud "fixOneEntry:x'="  [showAst (setEntryDP x (deltaPos xr 0))]
       return ( setEntryDP e (deltaPos er (xc + ec))
              , setEntryDP x (deltaPos xr 0))
     _ -> return (e,x)
 
-  -- anns <- getAnnsT
-  -- let
-  --   zeros = DP (0,0)
-  --   (DP (xr,xc), DP (actualRow,_)) =
-  --     case M.lookup (mkAnnKey x) anns of
-  --       Nothing -> (zeros, zeros)
-  --       Just ann -> (annLeadingCommentEntryDelta ann, annEntryDelta ann)
-  --   DP (er,ec) =
-  --     maybe zeros annLeadingCommentEntryDelta $ M.lookup (mkAnnKey e) anns
-  -- when (actualRow == 0) $ do
-  --   setEntryDPT e $ DP (er, xc + ec)
-  --   setEntryDPT x $ DP (xr, 0)
-  -- return e
-
 -- TODO: move this somewhere more appropriate
 entryDP :: LocatedA a -> DeltaPos
 #if __GLASGOW_HASKELL__ >= 912
-entryDP (L (EpAnn anc _ _) _)
+entryDP (L (EpAnn anc _ cs) _)
   = case anc of
       EpaSpan _ -> SameLine 1
-      EpaDelta _ dp _ -> dp
+      EpaDelta _ dp _ -> case cs of
+          EpaComments (L (EpaDelta _ dpc _) _:_) -> dpc
+          _ -> dp
 #else
 entryDP (L (SrcSpanAnn EpAnnNotUsed _) _) = SameLine 1
 entryDP (L (SrcSpanAnn (EpAnn anc _ _) _) _)
@@ -242,10 +214,12 @@ entryDP (L (SrcSpanAnn (EpAnn anc _ _) _) _)
 
 
 fixOneEntryExpr :: MonadIO m => LHsExpr GhcPs -> TransformT m (LHsExpr GhcPs)
-fixOneEntryExpr e@(L l (OpApp a x b c)) = do
+fixOneEntryExpr e@(L _ (OpApp a x b c)) = do
   -- lift $ liftIO $ debugPrint Loud "fixOneEntryExpr:(e,x)="  [showAst (e,x)]
+  -- lift $ liftIO $ debugPrint Loud "fixOneEntryExpr:x="  [showAst x]
   (e',x') <- fixOneEntry e x
   -- lift $ liftIO $ debugPrint Loud "fixOneEntryExpr:(e',x')="  [showAst (e',x')]
+  -- lift $ liftIO $ debugPrint Loud "fixOneEntryExpr:x'="  [showAst x']
   -- lift $ liftIO $ debugPrint Loud "fixOneEntryExpr:returning="  [showAst (L (getLoc e') (OpApp a x' b c))]
   return (L (getLoc e') (OpApp a x' b c))
 fixOneEntryExpr e = return e
@@ -253,12 +227,12 @@ fixOneEntryExpr e = return e
 fixOneEntryPat :: MonadIO m => LPat GhcPs -> TransformT m (LPat GhcPs)
 fixOneEntryPat pat
 #if __GLASGOW_HASKELL__ < 900
-  | Just p@(L l (ConPatIn a (InfixCon x b))) <- dLPat pat = do
+  | Just p@(L _ (ConPatIn a (InfixCon x b))) <- dLPat pat = do
 #else
-  | Just p@(L l (ConPat a b (InfixCon x c))) <- dLPat pat = do
+  | Just p@(L _ (ConPat a b (InfixCon x c))) <- dLPat pat = do
 #endif
     (p', x') <- fixOneEntry p (dLPatUnsafe x)
-    return (cLPat $ (L (getLoc p') (ConPat a b (InfixCon x' c))))
+    return (cLPat $ L (getLoc p') (ConPat a b (InfixCon x' c)))
   | otherwise = return pat
 
 -------------------------------------------------------------------------------
@@ -481,7 +455,7 @@ hasComments (L (EpAnn anc _ cs) _)
       _ -> True
 #else
 hasComments (L (SrcSpanAnn EpAnnNotUsed _) _) = False
-hasComments (L (SrcSpanAnn (EpAnn anc _ cs) _) _)
+hasComments (L (SrcSpanAnn (EpAnn _ _ cs) _) _)
   = case cs of
       EpaComments [] -> False
       EpaCommentsBalanced [] [] -> False
@@ -522,8 +496,8 @@ transferAnnsT p (L (EpAnn anc (AnnListItem ts) cs) a) (L an b) = do
         EpAnn ancb (AnnListItem tsb) csb -> EpAnn ancb (AnnListItem (tsb++ps)) csb
   return (L an' b)
 #else
-transferAnnsT p (L (SrcSpanAnn EpAnnNotUsed _) _) b = return b
-transferAnnsT p (L (SrcSpanAnn (EpAnn anc (AnnListItem ts) cs) l) a) (L (SrcSpanAnn an lb) b) = do
+transferAnnsT _ (L (SrcSpanAnn EpAnnNotUsed _) _) b = return b
+transferAnnsT p (L (SrcSpanAnn (EpAnn _ (AnnListItem ts) _) _) _) (L (SrcSpanAnn an lb) b) = do
   let ps = filter p ts
   let an' = case an of
         EpAnnNotUsed -> EpAnn (spanAsAnchor lb) (AnnListItem ps) emptyComments
