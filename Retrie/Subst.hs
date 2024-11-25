@@ -9,7 +9,7 @@ module Retrie.Subst (subst) where
 
 import Control.Monad.Writer.Strict
 import Data.Generics
-import Data.Maybe
+-- import Data.Maybe
 
 import Retrie.Context
 import Retrie.ExactPrint
@@ -18,7 +18,7 @@ import Retrie.GHC
 import Retrie.Substitution
 import Retrie.SYB
 import Retrie.Types
-import Retrie.Util
+-- import Retrie.Util
 
 ------------------------------------------------------------------------
 

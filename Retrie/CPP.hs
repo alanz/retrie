@@ -137,10 +137,10 @@ printCPP repls (CPP orig is ms) = Text.unpack $ Text.unlines $
 splice :: Text -> Int -> Int -> [(RealSrcSpan, String)] -> [Text] -> [Text]
 splice _ _ _ _ [] = []
 splice prefix _ _ [] (t:ts) = prefix <> t : ts
-splice prefix l c rs@((r, repl):rs') ts@(t:ts')
+splice prefix l c rss@((r, repl):rs') ts@(t:ts')
   | srcSpanStartLine r > l =
       -- Next rewrite is not on this line. Output line.
-      prefix <> t : splice "" (l+1) 1 rs ts'
+      prefix <> t : splice "" (l+1) 1 rss ts'
   | srcSpanStartLine r < l || srcSpanStartCol r < c =
       -- Next rewrite starts before current position. This happens when
       -- the same rewrite is made in multiple versions of the CPP'd module.
@@ -343,7 +343,7 @@ filterAndFlatten mbName is =
   runIdentity $ transformA (mconcat is) $ return . externalImps mbName
   where
     externalImps :: Maybe ModuleName -> [LImportDecl GhcPs] -> [LImportDecl GhcPs]
-    externalImps (Just mn) = filter ((/= mn) . unLoc . ideclName . unLoc)
+    externalImps (Just mn') = filter ((/= mn') . unLoc . ideclName . unLoc)
     externalImps _ = id
 
 eqImportDecl :: ImportDecl GhcPs -> ImportDecl GhcPs -> Bool

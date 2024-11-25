@@ -25,7 +25,7 @@ import Retrie.GHC
 import Retrie.Subst
 import Retrie.Types
 import Retrie.Universe
-import Retrie.Util
+-- import Retrie.Util
 
 ------------------------------------------------------------------------
 

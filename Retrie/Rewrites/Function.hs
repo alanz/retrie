@@ -22,7 +22,7 @@ import Retrie.Expr
 import Retrie.GHC
 import Retrie.Quantifiers
 import Retrie.Types
-import Retrie.Util
+-- import Retrie.Util
 
 dfnsToRewrites
   :: LibDir
@@ -52,8 +52,8 @@ dfnsToRewrites libdir specs am = fmap astA $ transformA am $ \ (L _ m) -> do
 
 getImports
   :: LibDir -> Direction -> Maybe (LocatedA ModuleName) -> TransformT IO AnnotatedImports
-getImports libdir RightToLeft (Just (L _ mn)) = -- See Note [fold only]
-  TransformT $ lift $ liftIO $ parseImports libdir ["import " ++ moduleNameString mn]
+getImports libdir RightToLeft (Just (L _ mn')) = -- See Note [fold only]
+  TransformT $ lift $ liftIO $ parseImports libdir ["import " ++ moduleNameString mn']
 getImports _ _ _ = return mempty
 
 matchToRewrites

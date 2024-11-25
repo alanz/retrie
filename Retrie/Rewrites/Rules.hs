@@ -14,11 +14,11 @@ import Retrie.ExactPrint
 import Retrie.GHC
 import Retrie.Quantifiers
 import Retrie.Types
-import Retrie.Util
-import Retrie.Monad
-import Control.Monad
-import Control.Monad.IO.Class
-import Control.Monad.Trans.Class
+-- import Retrie.Util
+-- import Retrie.Monad
+-- import Control.Monad
+-- import Control.Monad.IO.Class
+-- import Control.Monad.Trans.Class
 
 rulesToRewrites
   :: [(FastString, Direction)]

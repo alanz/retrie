@@ -18,7 +18,9 @@ import Control.Monad.IO.Class
 import Data.Char (isDigit)
 import Data.Either (partitionEithers)
 import Data.Generics hiding (Fixity)
+#if __GLASGOW_HASKELL__ < 912
 import Data.List
+#endif
 import Data.Maybe
 
 import Retrie.AlphaEnv
@@ -141,11 +143,13 @@ getPrec :: PprPrec -> Int
 getPrec (PprPrec prec) = prec
 
 withPrec :: Context -> SourceText -> Int -> FixityDirection -> Int -> Context
-withPrec c source prec dir i = c{ ctxtParentPrec = HasPrec fixity }
-  where
 #if __GLASGOW_HASKELL__ >= 912
+withPrec c _ prec dir i = c{ ctxtParentPrec = HasPrec fixity }
+  where
     fixity = Fixity prec d
 #else
+withPrec c source prec dir i = c{ ctxtParentPrec = HasPrec fixity }
+  where
     fixity = Fixity source prec d
 #endif
     d = case dir of

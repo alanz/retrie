@@ -15,7 +15,7 @@ import Data.Kind
 import Data.Maybe
 
 import Retrie.AlphaEnv
-import Retrie.ExactPrint
+import Retrie.ExactPrint hiding (m1)
 import Retrie.GHC
 import Retrie.Quantifiers
 import Retrie.Substitution

@@ -52,7 +52,11 @@ module Retrie.ExactPrint
 
 import Control.Exception
 import Control.Monad
+#if __GLASGOW_HASKELL__ >= 906
+import Control.Monad.State.Lazy
+# else
 import Control.Monad.State.Lazy hiding (fix)
+#endif
 import Data.List (transpose)
 import Text.Printf
 
@@ -76,11 +80,11 @@ import Retrie.ExactPrint.Annotated
 import Retrie.Fixity
 import Retrie.GHC
 import Retrie.SYB hiding (ext1)
-import Retrie.Util
+-- import Retrie.Util
 
 import GHC.Stack
 import Debug.Trace
-import GHC.Core.Opt.WorkWrap.Utils (DataConPatContext(dcpc_args))
+-- import GHC.Core.Opt.WorkWrap.Utils (DataConPatContext(dcpc_args))
 
 debug :: c -> String -> c
 debug c s = trace s c
@@ -434,21 +438,9 @@ isComma :: TrailingAnn -> Bool
 isComma (AddCommaAnn _) = True
 isComma _ = False
 
-#if __GLASGOW_HASKELL__ >= 912
-#else
-isCommentKeyword :: AnnKeywordId -> Bool
-isCommentKeyword _ = False
-#endif
-
--- isCommentAnnotation :: Annotation -> Bool
--- isCommentAnnotation Ann{..} =
---   (not . null $ annPriorComments)
---   || (not . null $ annFollowingComments)
---   || any (isCommentKeyword . fst) annsDP
-
 hasComments :: LocatedAn an a -> Bool
 #if __GLASGOW_HASKELL__ >= 912
-hasComments (L (EpAnn anc _ cs) _)
+hasComments (L (EpAnn _ _ cs) _)
   = case cs of
       EpaComments [] -> False
       EpaCommentsBalanced [] [] -> False
@@ -490,7 +482,7 @@ transferAnnsT
   -> LocatedA b                 -- to
   -> TransformT m (LocatedA b)
 #if __GLASGOW_HASKELL__ >= 912
-transferAnnsT p (L (EpAnn anc (AnnListItem ts) cs) a) (L an b) = do
+transferAnnsT p (L (EpAnn _ (AnnListItem ts) _) _) (L an b) = do
   let ps = filter p ts
   let an' = case an of
         EpAnn ancb (AnnListItem tsb) csb -> EpAnn ancb (AnnListItem (tsb++ps)) csb

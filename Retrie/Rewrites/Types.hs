@@ -11,14 +11,14 @@ module Retrie.Rewrites.Types where
 
 import Control.Monad
 import Data.Maybe
-import Control.Monad.State.Lazy
+-- import Control.Monad.State.Lazy
 
 import Retrie.ExactPrint
 import Retrie.Expr
 import Retrie.GHC
 import Retrie.Quantifiers
 import Retrie.Types
-import Retrie.Util
+-- import Retrie.Util
 
 typeSynonymsToRewrites
   :: [(FastString, Direction)]

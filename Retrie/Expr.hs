@@ -44,23 +44,23 @@ module Retrie.Expr
 
 import Control.Monad
 import Control.Monad.State.Lazy
-import Data.Functor.Identity
+-- import Data.Functor.Identity
 -- import qualified Data.Map as M
-import Data.Maybe
+-- import Data.Maybe
 -- import Data.Void
 
-import Retrie.AlphaEnv
+-- import Retrie.AlphaEnv
 import Retrie.ExactPrint
 import Retrie.Fixity
 import Retrie.GHC
 import Retrie.SYB
 import Retrie.Types
-import Retrie.Util
+-- import Retrie.Util
 
 -------------------------------------------------------------------------------
 
 mkLocatedHsVar :: Monad m => LocatedN RdrName -> TransformT m (LHsExpr GhcPs)
-mkLocatedHsVar ln@(L l n) = do
+mkLocatedHsVar (L l n) = do
   -- This special casing for [] is gross, but this is apparently how the
   -- annotations work.
   -- let anns =
@@ -155,13 +155,12 @@ mkLams
 mkLams [] e = return e
 mkLams vs e = do
   ancg <- mkAnchor (SameLine 0)
-  ancm <- mkAnchor (SameLine 0)
   let
     ga = GrhsAnn Nothing (Right (EpUniTok d1 NormalSyntax))
     ang = EpAnn ancg ga emptyComments
-    L l (Match x ctxt pats (GRHSs cs grhs binds)) = mkMatch (LamAlt LamSingle) (noLocD0 vs) e emptyLocalBinds
+    L l (Match _ ctxt pats (GRHSs cs grhs binds)) = mkMatch (LamAlt LamSingle) (noLocD0 vs) e emptyLocalBinds
     grhs' = case grhs of
-      [L lg (GRHS an guards rhs)] -> [L lg (GRHS ang guards rhs)]
+      [L lg (GRHS _ guards rhs)] -> [L lg (GRHS ang guards rhs)]
       _ -> fail "mkLams: lambda expression can only have a single grhs!"
   let
     lm = EpAnn d0 noAnn emptyComments
@@ -205,7 +204,6 @@ mkLet lbs e = do
   return le
 #else
 #if __GLASGOW_HASKELL__ >= 912
-  an <- mkEpAnn (DifferentLine 1 5) NoEpAnns
   let tokLet = EpTok (EpaDelta noSrcSpan (SameLine 0) [])
       tokIn = EpTok (EpaDelta noSrcSpan (DifferentLine 1 1) [])
   le <- mkLocA (SameLine 1) $ HsLet (tokLet, tokIn) lbs e
@@ -285,8 +283,8 @@ newWildVar = do
 wildSupply :: [RdrName] -> [RdrName]
 wildSupply used = wildSupplyP (`notElem` used)
 
-wildSupplyAlphaEnv :: AlphaEnv -> [RdrName]
-wildSupplyAlphaEnv env = wildSupplyP (\ nm -> isNothing (lookupAlphaEnv nm env))
+-- wildSupplyAlphaEnv :: AlphaEnv -> [RdrName]
+-- wildSupplyAlphaEnv env = wildSupplyP (\ nm -> isNothing (lookupAlphaEnv nm env))
 
 wildSupplyP :: (RdrName -> Bool) -> [RdrName]
 wildSupplyP p =
@@ -359,7 +357,7 @@ patToExpr orig = case dLPat orig of
       lift $ mkLocA (SameLine 1) (HsPar an p)
 #else
 #if __GLASGOW_HASKELL__ >= 912
-    go (ParPat an p') = do
+    go (ParPat _ p') = do
       p <- patToExpr p'
       let tokLP = EpTok (EpaDelta noSrcSpan (SameLine 0) [])
           tokRP = EpTok (EpaDelta noSrcSpan (SameLine 0) [])
@@ -392,6 +390,11 @@ patToExpr orig = case dLPat orig of
     go SplicePat{} = error "patToExpr SplicePat"
     go SumPat{} = error "patToExpr SumPat"
     go ViewPat{} = error "patToExpr ViewPat"
+#if __GLASGOW_HASKELL__ >= 912
+    go OrPat{} = error "patToExpr OrPat"
+    go EmbTyPat{} = error "patToExpr EmbTyPat"
+    go InvisPat{} = error "patToExpr InvisPat"
+#endif
 
 conPatHelper :: MonadIO m
              => LocatedN RdrName
@@ -411,7 +414,7 @@ conPatHelper con (InfixCon x y) =
                          <*> lift (mkLocatedHsVar con)
                          <*> patToExpr y
 #endif
-conPatHelper con (PrefixCon tyargs xs) = do
+conPatHelper con (PrefixCon _ xs) = do
   f <- lift $ mkLocatedHsVar con
   as <- mapM patToExpr xs
   -- lift $ lift $ liftIO $ debugPrint Loud "conPatHelper:f="  [showAst f]
@@ -423,7 +426,7 @@ conPatHelper _ _ = error "conPatHelper RecCon"
 grhsToExpr :: LGRHS GhcPs (LHsExpr GhcPs) -> LHsExpr GhcPs
 grhsToExpr (L _ (GRHS _ [] e)) = e
 grhsToExpr (L _ (GRHS _ (_:_) e)) = e -- not sure about this
-grhsToExpr _ = error "grhsToExpr"
+-- grhsToExpr _ = error "grhsToExpr"
 
 -------------------------------------------------------------------------------
 
@@ -463,15 +466,11 @@ parenify Context{..} le@(L _ e)
   where
            {- parent -}               {- child -}
 #if __GLASGOW_HASKELL__ >= 912
-    needed (HasPrec (Fixity p1 d1)) (Just (Fixity p2 d2)) =
-      p1 > p2 || (p1 == p2 && (d1 /= d2 || d2 == InfixN))
-    needed (HasPrec (Fixity p1 d1)) (Just (Fixity p2 d2)) =
-      p1 > p2 || (p1 == p2 && (d1 /= d2 || d2 == InfixN))
+    needed (HasPrec (Fixity p1 di1)) (Just (Fixity p2 di2)) =
+      p1 > p2 || (p1 == p2 && (di1 /= di2 || di2 == InfixN))
 #else
-    needed (HasPrec (Fixity _ p1 d1)) (Just (Fixity _ p2 d2)) =
-      p1 > p2 || (p1 == p2 && (d1 /= d2 || d2 == InfixN))
-    needed (HasPrec (Fixity _ p1 d1)) (Just (Fixity _ p2 d2)) =
-      p1 > p2 || (p1 == p2 && (d1 /= d2 || d2 == InfixN))
+    needed (HasPrec (Fixity _ p1 di1)) (Just (Fixity _ p2 di2)) =
+      p1 > p2 || (p1 == p2 && (di1 /= di2 || di2 == InfixN))
 #endif
     needed NeverParen _ = False
     needed _ Nothing = True
@@ -524,7 +523,6 @@ mkParen' :: (Data x, Monad m, AnnConstraint an)
 mkParen' dp k = do
 #if __GLASGOW_HASKELL__ >= 912
   let an = NoEpAnns
-  l <- uniqueSrcSpanT
   let anc = d0
   pe <- mkLocA dp (k (EpAnn anc an emptyComments))
   return pe
@@ -536,14 +534,9 @@ mkParen' dp k = do
   return pe
 #endif
 
+#if __GLASGOW_HASKELL__ < 912
 mkParenTy :: (Data x, Monad m, AnnConstraint an)
          => DeltaPos -> (EpAnn AnnParen -> x) -> TransformT m (LocatedAn an x)
-#if __GLASGOW_HASKELL__ >= 912
-mkParenTy dp k = do
-  let an = AnnParens (EpTok d0) (EpTok d0)
-  pe <- mkLocA dp (k (EpAnn d0 an emptyComments))
-  return pe
-#else
 mkParenTy dp k = do
   let an = AnnParen AnnParens d0 d0
   l <- uniqueSrcSpanT
@@ -569,7 +562,7 @@ parenifyP Context{..} p@(L _ pat)
 #if __GLASGOW_HASKELL__ >= 912
     let tokLP = EpTok d0
         tokRP = EpTok d0
-     in mkParen' (getEntryDP p) (\an -> ParPat (tokLP, tokRP) (setEntryDP p (SameLine 0)))
+     in mkParen' (getEntryDP p) (\_ -> ParPat (tokLP, tokRP) (setEntryDP p (SameLine 0)))
 #else
     let tokLP = L (TokenLoc (EpaDelta (SameLine 0) [])) HsTok
         tokRP = L (TokenLoc (EpaDelta (SameLine 0) [])) HsTok
@@ -652,7 +645,10 @@ noLocA1 :: (NoAnn an) => a -> LocatedAn an a
 noLocA1 a = L (EpAnn d1 noAnn emptyComments) a
 
 -- noLocA2 :: a -> LocatedAn an a
+noLocD0 :: a -> GenLocated EpaLocation a
 noLocD0 a = L d0 a
+
+noLocD1 :: a -> GenLocated EpaLocation a
 noLocD1 a = L d1 a
 #endif
 

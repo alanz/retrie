@@ -139,6 +139,15 @@ data LMap a
        , lmWordPrim :: Map Integer a
        , lmInt64Prim :: Map Integer a
        , lmWord64Prim :: Map Integer a
+#if __GLASGOW_HASKELL__ >= 912
+       , lmMultiLineString :: FSEnv a
+       , lmInt8Prim :: Map Integer a
+       , lmInt16Prim :: Map Integer a
+       , lmInt32Prim :: Map Integer a
+       , lmWord8Prim :: Map Integer a
+       , lmWord16Prim :: Map Integer a
+       , lmWord32Prim :: Map Integer a
+#endif
        }
   deriving (Functor)
 
@@ -146,6 +155,10 @@ emptyLMapWrapper :: LMap a
 emptyLMapWrapper
   = LM mEmpty mEmpty mEmpty mEmpty mEmpty
        mEmpty mEmpty mEmpty mEmpty
+#if __GLASGOW_HASKELL__ >= 912
+       mEmpty mEmpty mEmpty mEmpty mEmpty
+       mEmpty mEmpty
+#endif
 
 instance PatternMap LMap where
   type Key LMap = HsLit GhcPs
@@ -166,6 +179,15 @@ instance PatternMap LMap where
     , lmWordPrim = unionOn lmWordPrim m1 m2
     , lmInt64Prim = unionOn lmInt64Prim m1 m2
     , lmWord64Prim = unionOn lmWord64Prim m1 m2
+#if __GLASGOW_HASKELL__ >= 912
+    , lmMultiLineString = unionOn lmMultiLineString m1 m2
+    , lmInt8Prim = unionOn lmInt8Prim m1 m2
+    , lmInt16Prim = unionOn lmInt16Prim m1 m2
+    , lmInt32Prim = unionOn lmInt32Prim m1 m2
+    , lmWord8Prim = unionOn lmWord8Prim m1 m2
+    , lmWord16Prim = unionOn lmWord16Prim m1 m2
+    , lmWord32Prim = unionOn lmWord32Prim m1 m2
+#endif
     }
 
   mAlter :: AlphaEnv -> Quantifiers -> Key LMap -> A a -> LMap a -> LMap a
@@ -188,6 +210,15 @@ instance PatternMap LMap where
       go HsDoublePrim{} = missingSyntax "HsDoublePrim"
 #if __GLASGOW_HASKELL__ < 900
       go XLit{} = missingSyntax "XLit"
+#endif
+#if __GLASGOW_HASKELL__ >= 912
+      go (HsMultilineString _ fs) = m {lmMultiLineString = mAlter env vs fs f (lmMultiLineString m) }
+      go (HsInt8Prim _ i) = m {lmInt8Prim = mAlter env vs i f (lmInt8Prim m) }
+      go (HsInt16Prim _ i) = m {lmInt16Prim = mAlter env vs i f (lmInt16Prim m) }
+      go (HsInt32Prim _ i) = m {lmInt32Prim = mAlter env vs i f (lmInt32Prim m) }
+      go (HsWord8Prim _ i) = m {lmWord8Prim = mAlter env vs i f (lmWord8Prim m) }
+      go (HsWord16Prim _ i) = m {lmWord16Prim = mAlter env vs i f (lmWord16Prim m) }
+      go (HsWord32Prim _ i) = m {lmWord32Prim = mAlter env vs i f (lmWord32Prim m) }
 #endif
 
   mMatch :: MatchEnv -> Key LMap -> (Substitution, LMap a) -> [(Substitution, a)]
@@ -390,6 +421,18 @@ instance PatternMap EMap where
 #endif
       go (RecordUpd _ e' fs) =
         m { emRecordUpd = mAlter env vs e' (toA (mAlter env vs (fieldsToRdrNamesUpd fs) f)) (emRecordUpd m) }
+#if __GLASGOW_HASKELL__ >= 912
+      go HsGetField {} = missingSyntax "HsGetField"
+      go HsProjection {} = missingSyntax "HsProjection"
+      go HsTypedSplice {} = missingSyntax "HsTypedSplice"
+      go HsUntypedSplice {} = missingSyntax "HsUntypedSplice"
+      go HsProc {} = missingSyntax "HsProc"
+      go HsStatic {} = missingSyntax "HsStatic"
+      go HsEmbTy {} = missingSyntax "HsEmbTy"
+      go HsForAll {} = missingSyntax "HsForAll"
+      go HsQual {} = missingSyntax "HsQual"
+      go HsFunArr {} = missingSyntax "HsFunArr"
+#endif
       go (SectionL _ lhs o) =
         m { emSecL = mAlter env vs o (toA (mAlter env vs lhs f)) (emSecL m) }
       go (SectionR _ o rhs) =
@@ -728,7 +771,7 @@ instance PatternMap CDMap where
   mAlter env vs d f CDEmpty   = mAlter env vs d f emptyCDMapWrapper
   mAlter env vs d f m@CDMap{} = go d
     where
-      go (PrefixCon tyargs ps) = m { cdPrefixCon = mAlter env vs ps f (cdPrefixCon m) }
+      go (PrefixCon _tyargs ps) = m { cdPrefixCon = mAlter env vs ps f (cdPrefixCon m) }
       go (RecCon _) = missingSyntax "RecCon"
       go (InfixCon p1 p2) = m { cdInfixCon = mAlter env vs p1
                                               (toA (mAlter env vs p2 f))
@@ -738,7 +781,7 @@ instance PatternMap CDMap where
   mMatch _   _ (_ ,CDEmpty)   = []
   mMatch env d (hs,m@CDMap{}) = go d (hs,m)
     where
-      go (PrefixCon tyargs ps) = mapFor cdPrefixCon >=> mMatch env ps
+      go (PrefixCon _tyargs ps) = mapFor cdPrefixCon >=> mMatch env ps
       go (InfixCon p1 p2) = mapFor cdInfixCon >=> mMatch env p1 >=> mMatch env p2
       go _ = const [] -- TODO
 
@@ -825,6 +868,11 @@ instance PatternMap PatMap where
         m { pmTuplePat = mAlter env vs b (toA (mAlter env vs ps f)) (pmTuplePat m) }
       go SigPat{} = missingSyntax "SigPat"
       go SumPat{} = missingSyntax "SumPat"
+#if __GLASGOW_HASKELL__ >= 912
+      go OrPat{} = missingSyntax "OrPat"
+      go EmbTyPat{} = missingSyntax "EmbTyPat"
+      go InvisPat{} = missingSyntax "InvisPat"
+#endif
 
   mMatch :: MatchEnv -> Key PatMap -> (Substitution, PatMap a) -> [(Substitution, a)]
   mMatch _   _   (_, PatEmpty)   = []
@@ -1321,13 +1369,15 @@ splitVisBinders HsForAllInvis{..} = (False, map extractBinderInfo hsf_invis_bndr
 
 extractBinderInfo :: LHsTyVarBndr flag GhcPs -> (RdrName, Maybe (LHsKind GhcPs))
 #if __GLASGOW_HASKELL__ >= 912
-extractBinderInfo (L _ (HsTvb { tvb_var = HsBndrVar _ var
-                              , tvb_kind = kind})) = (unLoc var,k)
+extractBinderInfo (L _ (HsTvb { tvb_var = bvar
+                              , tvb_kind = kind})) = (var,k)
   where
+    var = case bvar of
+           HsBndrVar _ v -> unLoc v
+           HsBndrWildCard _ -> mkVarUnqual (fsLit "_")
     k = case kind of
           HsBndrKind   _ kk -> Just kk
           HsBndrNoKind _ -> Nothing
-          XBndrKind    _ -> Nothing
 #else
 extractBinderInfo = go . unLoc
   where
@@ -1450,7 +1500,7 @@ fieldsToRdrNamesUpd (RegularRecUpdFields _ xs) = map go xs
 fieldsToRdrNamesUpd (OverloadedRecUpdFields _ xs) = map go xs
   where
     go :: LHsRecUpdProj GhcPs -> LHsRecField GhcPs (LHsExpr GhcPs)
-    go (L l (HsFieldBind a (L l2 _f) arg pun)) =
+    go (L l (HsFieldBind a (L _l2 _f) arg pun)) =
       let lrdrName = error "TBD" -- same as GHC 9.2
           f' = FieldOcc NoExtField lrdrName
        in L l (HsFieldBind a (L l f') arg pun)
