@@ -1,0 +1,10 @@
+if impl(ghc >= 9.12.0)
+  packages: .
+            -- ../ghc-exactprint
+  source-repository-package
+      type: git
+      location: https://github.com/alanz/ghc-exactprint.git
+      tag: a46c7e2a3764e5d6246f2adb25155198c575c825
+  allow-newer: base
+else
+  packages: .
